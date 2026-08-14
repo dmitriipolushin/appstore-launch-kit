@@ -14,11 +14,11 @@
 
 Дайте ссылку на этот репозиторий вашему AI-агенту (Claude Code, Cursor, Codex) и скажите, что нужно сделать. Например:
 
-> Вот репозиторий с инструментами для App Store: `<ссылка>`. Прочитай AGENTS.md. Мне нужно собрать метаданные для нового приложения — трекер привычек, рынок США.
+> Вот репозиторий с инструментами для App Store: `https://github.com/dmitriipolushin/appstore-launch-kit`. Прочитай AGENTS.md. Мне нужно собрать метаданные для нового приложения — трекер привычек, рынок США.
 
-> Прочитай AGENTS.md в `<ссылка>`. Сделай скриншоты для App Store: мои скриншоты приложения лежат в `./screenshots`, иконка в `./icon.png`, стиль — тёмный минимализм.
+> Прочитай AGENTS.md в `https://github.com/dmitriipolushin/appstore-launch-kit`. Сделай скриншоты для App Store: мои скриншоты приложения лежат в `./screenshots`, иконка в `./icon.png`, стиль — тёмный минимализм.
 
-> Прочитай `<ссылка>/docs/app-store-review-guide.md`. Я получил reject по Guideline 2.3.2, вот текст письма — помоги разобраться.
+> Прочитай `https://github.com/dmitriipolushin/appstore-launch-kit/blob/main/docs/app-store-review-guide.md`. Я получил reject по Guideline 2.3.2, вот текст письма — помоги разобраться.
 
 ---
 
@@ -40,7 +40,7 @@
 Скиллы можно подключить, чтобы они вызывались как `/aso-collection`, `/app-store-screenshots` и так далее:
 
 ```bash
-git clone <this-repo> && cd appstore-launch-kit
+git clone git@github.com:dmitriipolushin/appstore-launch-kit.git && cd appstore-launch-kit
 for s in aso-collection app-store-optimization app-store-screenshots asc-metadata; do
   ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
 done
