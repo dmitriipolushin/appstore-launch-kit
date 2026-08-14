@@ -1,0 +1,5 @@
+{
+  "name": "appstore-launch-kit",
+  "description": "Заполнение данных приложения в App Store: ASO-исследование и метаданные, генерация скриншотов, заливка через App Store Connect API, прохождение модерации.",
+  "version": "1.0.0"
+}

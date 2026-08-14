@@ -1,0 +1,30 @@
+# Секреты — никогда не коммитить
+*.p8
+api_keys.env
+.env
+.env.*
+!.env.example
+config/api_keys.env
+
+# Рабочие данные ASO-проектов (создаются скиллом aso-collection в cwd).
+# Только в корне репозитория — сам скилл лежит в skills/aso-collection/ и коммитится.
+/aso-collection/
+
+# Node
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
