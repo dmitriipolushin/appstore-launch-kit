@@ -158,7 +158,7 @@
 
 #### Кейс A. Триал кричит громче цены (3.1.2(c))
 
-<img src="assets/reject-3-trial-louder-than-price.png" width="330" alt="Пейвол: триал в заголовке и на кнопке, цена $39.99 мелким серым текстом">
+![Пейвол: триал в заголовке и на кнопке, цена 39.99 мелким серым текстом](assets/reject-3-trial-louder-than-price.png)
 
 **Что написала Apple:**
 
@@ -180,7 +180,7 @@ Apple прямо перечисляет, что оценивается: **шри
 
 #### Кейс B. Непонятно, что покупаешь (3.1.2(c))
 
-<img src="assets/reject-4-no-value-described.png" width="330" alt="Пейвол: три тарифа и кнопка Continue, без списка того, что входит в подписку">
+![Пейвол: три тарифа и кнопка Continue, без списка того, что входит в подписку](assets/reject-4-no-value-described.png)
 
 **Что написала Apple:**
 
@@ -196,10 +196,13 @@ Apple прямо перечисляет, что оценивается: **шри
 
 #### Кейс C. Скидка сразу после закрытия пейвола (5.6)
 
-<table>
-<tr><td width="50%"><img src="assets/reject-1-initial-paywall.png" alt="Первый пейвол: Start Your Free Trial, Weekly $5.99 / Annual $39.99"><br><em>1. Пользователь закрывает этот пейвол…</em></td>
-<td width="50%"><img src="assets/reject-2-offer-after-close.png" alt="Экран сразу после: 50% OFF, Exclusive Offer, $39.99 зачёркнуто, $19.99 в год"><br><em>2. …и сразу получает этот</em></td></tr>
-</table>
+**Шаг 1.** Пользователь видит пейвол и нажимает «No, thanks»:
+
+![Первый пейвол: Start Your Free Trial, Weekly 5.99 / Annual 39.99](assets/reject-1-initial-paywall.png)
+
+**Шаг 2.** Вместо приложения он получает это:
+
+![Экран сразу после закрытия: 50% OFF, Exclusive Offer, цена 39.99 зачёркнута, 19.99 в год](assets/reject-2-offer-after-close.png)
 
 **Что написала Apple:**
 
