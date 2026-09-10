@@ -32,7 +32,7 @@
 | **Подтверждено индустрией** | D7/D30 retention | Множество источников, 2025-2026 |
 | **Подтверждено индустрией** | Uninstall rate (штраф) | Industry consensus |
 | **Подтверждено индустрией** | Crash rate (штраф) | Apple Developer guidelines |
-| **Оспорено** | Screenshot captions → индексация | Заявлено Appfigures 06.2025 (без контролей). Контролируемый тест ConsultMyApp: 64 фразы / 8 приложений → 36 не ранжируются, 27 объясняются существующими метаданными, 1 спорная. Как канал ранжирования не использовать; только конверсия |
+| **Оспорено** | Screenshot captions → индексация | Оспорено: заявлено Appfigures 06.2025 без контролей; контролируемый тест ConsultMyApp (64 фразы / 8 приложений) дал 1 необъяснённое попадание из 64. Как канал ранжирования не использовать |
 | **Подтверждено 2025** | CPP → органическая выдача | July 2025 Apple announcement |
 | **Подтверждено 2025** | In-App Events → индексация | Apple WWDC 2022, закреплено |
 | **Beta 2025** | AI-generated tags (iOS 26) | Apple WWDC 2025 beta |
@@ -71,7 +71,7 @@
 | 2023, iOS 17 | Apple | PPO тест не прерывается при обновлении приложения | Apple changelog |
 | 2024 | Apple | Semantic matching mature; plurals/singulars авто | Industry observation |
 | Июнь 2025 | Google Play | Крупнейшее keyword volatility: аномальный score 6/6; ≥40 стран; keyword density weight up [2] | AppTweak detector |
-| Июнь 2025 | Apple | Аномалия в ранжировании 5–9 июня (AppTweak, score +6). Причина НЕ установлена. Версия про индексацию screenshot captions не подтверждена контролируемым тестом | AppTweak anomaly detection |
+| Июнь 2025 | Apple | Аномалия в ранжировании 5–9 июня (AppTweak, score +6). Причина НЕ установлена; версия про screenshot captions не подтверждена контролируемым тестом | AppTweak anomaly detection |
 | Июль 2025 | Apple | CPP в органических результатах поиска | Apple announcement |
 | Ноябрь 2025 | Apple | CPP doubled: 35 → 70; ручное назначение keyword per CPP | Apple ASC update |
 | Ноябрь 2025 | Google Play | Battery vital анонсирован (вступает в силу 01.03.2026) | Google Play Console |

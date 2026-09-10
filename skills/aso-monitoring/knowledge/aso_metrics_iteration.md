@@ -26,7 +26,6 @@
 | Категория | Метрика | Что показывает | Action trigger |
 |---|---|---|---|
 | **Visibility** | Keyword rankings | Позиция по target ключам | Падение > 5 позиций → аудит metadata/behavioral |
-| **Visibility** | **ASA Impression Share** | % eligible impressions которые мы захватили (range: low–high) | Share > 85% + rank ONE → bid raise бесполезен, фокус на CR; share < 50% + rank > ONE → поднять bid |
 | **Visibility** | Share of Voice (SOV) | % видимости в keyword set vs. конкуренты | SOV < 20% в core category → расширить coverage |
 | **Visibility** | Search Ad Pollution | Плотность платных объявлений на keyword | Высокий score → сдвинуть фокус на менее конкурентные ключи |
 | **Visibility** | Impressions (App Store) / Store Listing Visitors (GP) | Охват | Падение без metadata изменений → алгоритмический апдейт |
@@ -251,67 +250,6 @@ Blended CPI = Total Ad Spend / (Paid Installs + Organic Halo Installs)
 4. Altis — "10 Metrics Every ASO Expert Must Track in 2026" — tryaltis.com/essential-aso-metrics-to-track-2026/ (2026)
 5. Moburst — "Measuring Cannibalization in ASO: The Full Guide" — moburst.com/blog/what-is-cannibalization-in-aso/ (2025)
 6. arXiv — "Complementarity Between Paid and Organic Installs in Mobile App Advertising" — arxiv.org/html/2504.16151v1 (2025)
-
----
-
-## ASA Impression Share Analysis
-
-Impression Share — процент eligible impressions, которые получило приложение из всех доступных показов по данному поисковому запросу. Это **единственная метрика**, которая показывает насколько мы "заполнили" возможный paid охват по ключу.
-
-### Как получить
-
-Async API через `custom-reports` (не стандартный keyword report):
-
-```python
-# 1. Создать отчёт (возвращает ID)
-result = api.impression_share_reports(
-    start_date="2026-03-26", end_date="2026-04-07",
-    granularity="DAILY",
-    name="imp_share_YYYYMMDD",
-    conditions=[{"field": "countryOrRegion", "operator": "IN", "values": ["DE","AT","CH"]}]
-)
-report_id = result["id"]  # например 64377355
-
-# 2. Дождаться завершения (обычно ~30-60 сек)
-res = api.get_single_impression_share_report(report_id)
-# state: QUEUED → RUNNING → COMPLETED
-
-# 3. Скачать CSV по downloadUri
-import urllib.request
-urllib.request.urlretrieve(res["data"]["downloadUri"], "imp_share.csv")
-```
-
-Поля CSV: `date, appName, adamId, countryOrRegion, searchTerm, lowImpressionShare, highImpressionShare, rank, searchPopularity`
-
-### Интерпретация
-
-| Impression Share | Rank | Действие |
-|---|---|---|
-| 85–100% | ONE | Bid raise бесполезен — потолок охвата достигнут. Фокус на CR (скриншоты, конверсия). |
-| 60–85% | ONE | Есть 15–40% упущенных показов. Raise bid на 10–20% для тестирования. |
-| 40–60% | ONE–TWO | Значительный upside. Raise bid агрессивнее. |
-| < 40% | TWO+ | Bid сильно ниже clearing price. Либо поднять bid, либо паузировать если CPA не окупается. |
-| Любой | TWO+ | Конкурент занимает rank ONE — нужно выяснить их bid диапазон и переиграть. |
-
-### Связь с bid оптимизацией
-
-**Главный инсайт**: высокий CPA при высоком impression share (85%+) = проблема **конверсии**, не ставки. Поднятие bid не поможет — охват уже максимален.
-
-- Если share низкий → поднять bid → захватить больше показов → больше installs при том же CR
-- Если share высокий и CR низкий → A/B тест скриншотов / иконки → без изменения bid
-- Если share высокий и CR высокий → keyword уже оптимизирован, масштабировать через новые ключи
-
-### ⚠️ searchPopularity в этом отчёте ненадёжен
-
-Поле `searchPopularity` в impression share CSV **не передаёт параметр страны** в запросе к бэкенду Apple. Возвращает глобальные данные независимо от conditions. Для non-US рынков (DE, AT, CH) — не использовать. Источник: наблюдение на практике (2026-04).
-
-Вместо этого использовать hints/autocomplete API для оценки объёма запросов в конкретном сторфронте.
-
-### Cadence
-
-- Раз в 2 недели или после значительного изменения ставок
-- Обязательно после повышения/понижения бюджета
-- Хранить CSV в `./asa-monitoring/data/reports/` для trend analysis
 
 ---
 

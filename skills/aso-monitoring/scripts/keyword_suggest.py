@@ -22,7 +22,6 @@ import string
 import sys
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -167,53 +166,52 @@ def detect_alphabet(seed: str) -> str:
     return "latin"
 
 
-def expand_seeds(seeds: List[str], country_code: str, max_workers: int = 12) -> List[dict]:
+def expand_seeds(seeds: List[str], country_code: str) -> List[dict]:
     """
     Расширяет список seed-фраз через алфавитный перебор.
 
-    Для каждого seed: сам seed + seed + пробел + каждая буква алфавита.
-    Запросы идут параллельно (пул потоков) — последовательный обход 30+ seed
-    занимал больше 10 минут и регулярно подвисал.
+    Для каждого seed:
+    1. Запрос подсказок по seed как есть
+    2. seed + пробел + каждая буква алфавита
 
-    Возвращает дедуплицированный список {term, priority, priority_score, tier, source},
-    отсортированный по убыванию priority.
+    Возвращает дедуплицированный список {term, priority, source}.
     """
-    queries = []
-    for seed in seeds:
+    seen = set()
+    results = []
+    total_seeds = len(seeds)
+
+    for idx, seed in enumerate(seeds, 1):
         seed = seed.strip()
         if not seed:
             continue
-        letters = CYRILLIC_LETTERS if detect_alphabet(seed) == "cyrillic" else string.ascii_lowercase
-        queries.append((seed, seed))
-        queries.extend((seed, f"{seed} {L}") for L in letters)
 
-    total = len(queries)
-    print(f"Расширяем {len(seeds)} seed → {total} запросов, {max_workers} потоков", flush=True)
+        alphabet = detect_alphabet(seed)
+        letters = CYRILLIC_LETTERS if alphabet == "cyrillic" else string.ascii_lowercase
 
-    def work(item):
-        src, q = item
-        try:
-            return src, get_suggestions(q, country_code)
-        except Exception as e:                       # noqa: BLE001
-            print(f"  ошибка '{q}': {e}", file=sys.stderr)
-            return src, []
+        total_queries = 1 + len(letters)
+        print(f"\n[{idx}/{total_seeds}] Расширяем: '{seed}' ({alphabet}, {total_queries} запросов)")
 
-    seen, results = set(), []
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        for done, (src, hints) in enumerate(pool.map(work, queries), 1):
+        hints = get_suggestions(seed, country_code)
+        for h in hints:
+            if h["term"].lower() not in seen:
+                seen.add(h["term"].lower())
+                results.append({**h, "source": seed})
+        print(f"  '{seed}' → {len(hints)} подсказок")
+        time.sleep(REQUEST_DELAY)
+
+        for letter in letters:
+            query = f"{seed} {letter}"
+            hints = get_suggestions(query, country_code)
+            new_count = 0
             for h in hints:
-                key = h["term"].lower()
-                if key not in seen:
-                    seen.add(key)
-                    results.append({**h, "source": src})
-            if done % 100 == 0 or done == total:
-                print(f"  {done}/{total} запросов, {len(results)} уникальных терминов", flush=True)
+                if h["term"].lower() not in seen:
+                    seen.add(h["term"].lower())
+                    results.append({**h, "source": f"{seed}+{letter}"})
+                    new_count += 1
+            if new_count > 0:
+                print(f"  '{query}' → +{new_count} новых")
+            time.sleep(REQUEST_DELAY)
 
-    results.sort(key=lambda r: -r.get("priority", 0))
-    for r in results:
-        pr = r.get("priority", 0)
-        r["priority_score"] = pr
-        r["tier"] = "HIGH" if pr >= TIER_HIGH else "MEDIUM" if pr >= TIER_MEDIUM else "LOW"
     return results
 
 

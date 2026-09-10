@@ -27,6 +27,7 @@
 |---|---|---|---|
 | **Visibility** | Keyword rankings | Позиция по target ключам | Падение > 5 позиций → аудит metadata/behavioral |
 | **Visibility** | **ASA Impression Share** | % eligible impressions которые мы захватили (range: low–high) | Share > 85% + rank ONE → bid raise бесполезен, фокус на CR; share < 50% + rank > ONE → поднять bid |
+| **Conversion** | **IPM (Installs per Mille)** | installs / impressions × 1000 — комбо CTR × CR, сквозная эффективность кампании | < 3 → проблема в CTR или CR; > 15 → отлично. При запуске CPP: сравнивать IPM до/после — прямой сигнал влияния страницы |
 | **Visibility** | Share of Voice (SOV) | % видимости в keyword set vs. конкуренты | SOV < 20% в core category → расширить coverage |
 | **Visibility** | Search Ad Pollution | Плотность платных объявлений на keyword | Высокий score → сдвинуть фокус на менее конкурентные ключи |
 | **Visibility** | Impressions (App Store) / Store Listing Visitors (GP) | Охват | Падение без metadata изменений → алгоритмический апдейт |

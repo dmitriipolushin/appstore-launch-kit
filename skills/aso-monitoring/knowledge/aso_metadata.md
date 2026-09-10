@@ -8,7 +8,6 @@
 
 ## Key Principles
 
-- **iTunes Lookup API НЕ возвращает subtitle**: поле `subtitle` в ответе iTunes API всегда отсутствует или равно `null`. Для получения subtitle конкурентов использовать **AppStoreSpy API** (`/v1/ios/apps/{id}` → поле `short`). Это касается как собственного приложения, так и анализа конкурентов.
 - **Иерархия весов**: Title > Subtitle > Keyword Field. Слово из title не нужно повторять в keyword field — Apple индексирует его единожды [1, 3]
 - **Дублирование = расточительство**: повторение ключей между полями не даёт дополнительного веса и сокращает охват [2]
 - **First 167 chars в description** — всё что пользователь видит до "Read More"; это главное конверсионное окно [4]
@@ -108,12 +107,9 @@
 
 Ключевой инсайт: Apple индексирует metadata из **нескольких языковых локалей** в одном сторефронте [5].
 
-**US App Store индексирует 10 языков** — **официально опубликовано Apple**, таблица локализаций:
+**US App Store индексирует 10 локалей** — официальная таблица Apple:
 developer.apple.com/help/app-store-connect/reference/app-information/app-store-localizations/
-Строка USA: `English (US) | Arabic, Chinese (Simplified), Chinese (Traditional), French, Korean,
-Portuguese (Brazil), Russian, Spanish (Mexico), Vietnamese`. Состав не менялся в 2025–2026.
-Подтверждают AppTweak (11.2025), MobileAction (04.2026), aso.dev (07.2026), Appfigures (06.2026).
-⚠️ en-GB и en-AU в US **не** индексируются. Таблица AppFollow (только en-US + es-MX) устарела.
+Состав не менялся в 2025–2026. ⚠️ en-GB и en-AU в US **не** индексируются.
 
 | Язык | Locale code | Доп. символов |
 |---|---|---|
@@ -127,25 +123,10 @@ Portuguese (Brazil), Russian, Spanish (Mexico), Vietnamese`. Состав не �
 | Portuguese (Brazil) | pt-BR | +160 chars |
 | Russian | ru | +160 chars |
 | Vietnamese | vi | +160 chars |
-| Vietnamese | vi | +160 chars |
-
-**Стратегия для US-focused приложений**: заполнять все вторичные локали английскими ключами (не переводом). Подтверждено кейсом Amma Pregnancy Tracker (AppFollow): +49% US visibility, +1221 индексированных запросов за 1 месяц при заполнении ar и zh-Hans английскими словами. Apple индексирует текст как есть, не проверяя соответствие языка локали.
 
 **Ограничение**: ключевые фразы должны быть целиком внутри одной локали. Слова из en-US и es-MX не комбинируются в одну фразу [5].
 
 **Практика**: заполнить es-MX другими ключами (не переводом en-US) — увеличивает общий keyword coverage без изменения основного listing.
-
-**RU App Store индексирует 3 локали** (не US-набор из 9!):
-
-| Язык | Locale code | Стратегия заполнения |
-|---|---|---|
-| Russian | ru | Основные RU-термины (primary) |
-| Ukrainian | uk | Дополнительные RU-термины — Кириллица общая, русские слова покрываются |
-| English (GB) | en-GB | English-термины (⚠️ en-US **не** индексируется в RU-сторе!) |
-
-**⚠️ Частая ошибка**: заполнять en-US локаль для RU рынка — она не индексируется в RU App Store. Использовать en-GB.
-
-**Стратегия uk-локали для RU**: заполнять русскоязычными терминами, которых нет в ru-локали. Кириллица одинаковая, Apple индексирует русские запросы из uk metadata в RU сторефронте. Не переводить на украинский язык — это потеря keyword budget.
 
 ### Translation vs. Transcreation
 
@@ -217,7 +198,7 @@ Portuguese (Brazil), Russian, Spanish (Mexico), Vietnamese`. Состав не �
 ## Reuse Hooks
 
 - **Аудит метаданных**: проверить дублирование слов между title/subtitle/keyword field → удалить дубли, заменить новыми ключами
-- **Character budget**: `title(30) + subtitle(30) + keyword_field(100)` = 160 chars на локаль. Cross-localization: ×10 локалей в US store = до **1600 chars**. Индексируются все три поля в каждой локали, не только keyword field
+- **Character budget**: `title(30) + subtitle(30) + keyword_field(100)` = 160 chars на локаль. Cross-localization: ×10 локалей в US store = до **1600 chars**. Индексируются все три поля в каждой локали
 - **Description hook**: первые 167 символов — приоритет конверсионного копирайтинга; остальное второстепенно
 - **Promotional Text** для сезонных акций: обновлять без ребилда, но не рассчитывать на индексацию
 - **Локализация keyword field**: всегда делать отдельный keyword research на языке рынка, не переводить с английского

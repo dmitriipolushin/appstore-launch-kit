@@ -55,6 +55,14 @@ mindmap
       Incrementality NeuralProphet
       A/B maturity model 4 levels
       ROI formulas
+    ASA Campaign Architecture
+      Budget starvation mechanism
+      Thematic clustering by intent
+      Single vs. multi-campaign decision
+      Bid discovery $0.10 strategy
+      campaigns_v2.json config format
+      Phase 1/Phase 2 rollout model
+      Multi-campaign monitoring workflow
 ```
 
 ---

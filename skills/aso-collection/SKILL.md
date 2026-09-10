@@ -1,6 +1,6 @@
 ---
 name: aso-collection
-description: Первичный ASO-набор для нового приложения — конкуренты, ключевые слова, Search Popularity через Apple Search Ads, позиции в поиске, рекомендации для title/subtitle/keyword field и генерация description. Use when starting ASO for a new app, researching competitors or keywords, or writing App Store metadata.
+description: Собирает первичный ASO-набор для нового приложения: конкуренты, ядро ключевых слов с Search Popularity, органические позиции, рекомендации по title/subtitle/keyword field и генерация description. Вызывай когда нужно сделать ASO с нуля, собрать ключи, проанализировать конкурентов или подготовить метаданные к публикации.
 ---
 
 # aso-collection
@@ -27,6 +27,11 @@ description: Первичный ASO-набор для нового прилож�
 
 ## Правила работы
 
+**⚠️ Не использовать `$1`, `$2` … в bash-блоках этого файла**
+При вызове скилла позиционные переменные подменяются словами из аргументов пользователя
+(`awk '{print $1}'` превращается в `awk '{print <второе слово запроса>}'`).
+Использовать `cut -d' ' -f1`, `awk '{print substr($0,1,index($0," ")-1)}'` или именованные переменные.
+
 **Subtitle — всегда фраза, не листинг**
 Никогда не предлагать subtitle в формате перечисления через запятую («трек, кавер, лирика»). Subtitle = законченная фраза, которая сама является поисковым запросом. Структура: глагол + объект + дифференциатор.
 
@@ -41,15 +46,14 @@ iTunes API не возвращает subtitle. Для анализа конку�
 
 ## Первоначальная настройка (один раз)
 
-Все API-ключи хранятся в `~/.config/aso-tools/api_keys.env`. Скрипты автоматически загружают их оттуда.
+Все API-ключи хранятся в `~/.config/aso-tools/api_keys.env` — скрипты загружают их оттуда сами
+(через `scripts/env_setup.py`). Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
 
-Если файл не существует — скопируй шаблон:
-```bash
-cp ~/.config/aso-tools/api_keys.env.example ~/.config/aso-tools/api_keys.env
-# Заполни: APPSTORESPY_API_KEY, APPLE_SA_COOKIE, APPLE_SA_XSRF
-```
+Нужны для этого скилла: `APPSTORESPY_API_KEY`, а для Search Popularity — `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
+(живут ~24 часа; `401` от `keyword_popularity.py` = пора обновить cookie из DevTools на app-ads.apple.com).
 
-PEM-ключи Apple Search Ads: `~/.config/aso-tools/keys/`
+Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
+и куда её взять (описано в `growth/api_keys.env.example` в репозитории скиллов).
 
 ## Структура данных
 
@@ -86,10 +90,29 @@ mkdir -p ./aso-collection/{config,data/{raw,keywords,reports}}
 **Вариант А — пользователь даёт список**
 Пользователь называет приложения или App Store ссылки. Для каждого извлеки App ID и проверь через AppStoreSpy MCP `get_detailed_app_info` — покажи таблицу с `downloads_month`, `revenue_month`, чтобы пользователь подтвердил что это нужные конкуренты.
 
-**Вариант Б — поиск через AppStoreSpy MCP**
+**Вариант Б — discovery через iTunes Search (работает всегда)**
+
+⚠️ AppStoreSpy MCP (`search_ios_apps`) есть не в каждом окружении, а REST-поиск AppStoreSpy
+молча игнорирует параметр `query` и возвращает нерелевантный список. Проверь MCP; если его нет —
+ищи через iTunes, он бесплатный и отдаёт ровно то, что видит пользователь в поиске App Store:
+
+```bash
+for q in "ключ 1" "ключ 2" "ключ 3"; do
+  echo "== $q"
+  curl -s -G "https://itunes.apple.com/search" \
+    --data-urlencode "term=$q" --data-urlencode "country=us" \
+    --data-urlencode "entity=software" --data-urlencode "limit=12" \
+  | python3 -c "import json,sys
+for a in json.load(sys.stdin)['results']:
+    print(a['trackId'], a.get('userRatingCount'), a['trackName'][:55])"
+done
 ```
-mcp: search_ios_apps(query=<ключевое слово>, sort="-downloads_month", limit=20)
-```
+
+Метрики (downloads/revenue) добираются потом поштучно через AppStoreSpy REST:
+`GET https://api.appstorespy.com/v1/ios/apps/{id}` с заголовком `API-KEY: $APPSTORESPY_API_KEY`
+(именно `API-KEY`, не `Authorization: Bearer`). Поля: `name`, `short` (subtitle), `downloads`,
+`revenue`, `rating_count`, `rating_avg`, `released`.
+
 Покажи топ результаты пользователю, пусть выберет релевантных.
 
 После подтверждения составь `./aso-collection/config/competitors.txt`:
@@ -103,7 +126,7 @@ mcp: search_ios_apps(query=<ключевое слово>, sort="-downloads_month
 ```bash
 python3 ~/.claude/skills/aso-collection/scripts/collect_profiles.py \
   --project ./aso-collection \
-  --app-ids $(grep -v '#' ./aso-collection/config/competitors.txt | awk '{print $1}' | tr '\n' ' ')
+  --app-ids $(grep -v '^#' ./aso-collection/config/competitors.txt | cut -d' ' -f1 | tr '\n' ' ')
 ```
 
 Скрипт сохраняет `data/raw/profile_{app_id}_{timestamp}.json` с title, subtitle, description.
@@ -154,13 +177,60 @@ Apple Search Hints дают только *порядок* подсказок, н
 | 1–9 | Niche | Только добивка char budget |
 | 0 | Zero | Убрать из KF; оставить в description для NLP |
 
-**Настройка cookie (живёт ~24ч):**
+**Предусловие, которое решает всё.** Запрос возвращает данные только для `adamId`
+**из твоей ASA-организации**, и фильтрует выдачу по тематике этого приложения.
+adamId конкурента отдаёт пустой массив. Значит:
+
+> Если в ASA-аккаунте нет приложения из нужной ниши — **Search Popularity получить неоткуда.**
+> Ни через cookie, ни через браузер, ни через официальный API. Не тратить на это время:
+> сказать пользователю прямо и работать на Apple Search Hints + конкурентности выдачи,
+> а popularity замерить после публикации приложения.
+
+Сначала проверь, какие adamId доступны:
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/asa/asa_api.py --list-apps
+```
+
+#### Способ 1 (основной) — из браузера, без cookie
+
+Ничего не истекает раз в сутки и не нужно копировать учётные данные. Требует
+Claude-in-Chrome либо встроенного браузера с активной сессией app-ads.apple.com.
+
+1. Открыть `https://app-ads.apple.com/` и убедиться, что пользователь залогинен.
+2. Выполнить запрос **изнутри страницы** — браузер сам подставит сессию:
+
+```js
+const xsrf = decodeURIComponent((document.cookie.match(/XSRF-TOKEN-CM=([^;]+)/)||[])[1]||'');
+const Q = `query getRecommendedKeywordsGql($adamId: String!, $text: String, $storefronts: [String]) {
+  recommendationV2 { getRecommendedKeywords(adamId: $adamId, text: $text, storefronts: $storefronts) {
+    id name popularity matchType __typename } __typename } }`;
+window.__q = async (adamId, text, sf=['US']) => {
+  const r = await fetch('https://app-ads.apple.com/reporting/graphql', {
+    method:'POST', credentials:'include',
+    headers:{'content-type':'application/json','x-xsrf-token-cm':xsrf},
+    body: JSON.stringify({operationName:'getRecommendedKeywordsGql',
+      variables:{adamId:String(adamId), text, storefronts:sf}, query:Q})});
+  const j = await r.json();
+  return (j?.data?.recommendationV2?.getRecommendedKeywords)||[];
+};
+'ready'
+```
+
+3. Гонять пачками, **не быстрее ~1 запроса в секунду** — иначе Apple перестаёт отвечать
+   (запросы виснут без статуса). Результат складывать в `window.__out`, забирать отдельным вызовом:
+   долгий `await` в одном вызове упирается в таймаут инжекции.
+
+⚠️ Cookie **не читать и никуда не записывать.** Он `HttpOnly`, из JS недоступен, и он не нужен.
+⚠️ Вкладку за собой закрыть.
+
+#### Способ 2 (запасной) — cookie в env, живёт ~24ч
+
 1. Открой app-ads.apple.com → войди в аккаунт
 2. DevTools → Network → фильтр XHR
 3. Открой любую кампанию → Ad group → Keywords → вкладка Recommendations
-4. Найди запрос `/cm/api/v2/keywords/recommendation?adamId=...`
+4. Найди POST `/reporting/graphql` с `operationName: getRecommendedKeywordsGql`
 5. Right-click → Copy → Copy as cURL
-6. Обнови в `~/.config/aso-tools/api_keys.env`: `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
+6. Обнови в `~/.config/aso-tools/api_keys.env`: `APPLE_SA_COOKIE`, `APPLE_SA_XSRF`, `APPLE_SA_ADAM_ID`
 
 **Запуск:**
 ```bash
@@ -171,9 +241,22 @@ python3 ~/.claude/skills/aso-collection/scripts/asa/keyword_popularity.py \
   --out ./aso-collection/data/keywords/asa_popularity.csv
 ```
 
-⚠️ `adamId` в скрипте — не влияет на scores (они глобальные).
+**Режимы отказа — читать до того, как чинить cookie:**
+
+| Симптом | Причина | Что делать |
+|---|---|---|
+| HTTP 401/403 | cookie истёк | обновить cookie, либо перейти на браузерный способ (ниже) |
+| HTML вместо JSON | `APPLE_SA_COOKIE` пуст | то же |
+| **HTTP 200 + пустой массив** | **`adamId` не из твоей ASA-организации, либо seed не по теме этого приложения** | подставить adamId своего приложения из нужной ниши |
+| Запрос висит без ответа | троттлинг после серии запросов | пауза, затем ≤1 запрос в секунду |
+
+⚠️ **`adamId` влияет решающе** (проверено экспериментально 09.2026, вопреки прежней записи
+в этом файле). Он задаёт тематическое пространство выдачи и сам факт непустого ответа.
+adamId конкурента возвращает пусто — API обслуживает только приложения твоей организации.
+Следствие: **popularity по нише недоступна, пока в ASA-аккаунте нет приложения из этой ниши.**
+
 ⚠️ RU storefront всегда возвращает popularity=5 — ASA в России не работает.
-⚠️ При 401 — cookie истёк, повтори шаги 1–6.
+⚠️ Официальный Apple Search Ads API v5 popularity **не отдаёт** — эндпоинтов нет, не искать.
 
 **Что делать с результатами:**
 1. Отсортируй CSV по popularity DESC
@@ -200,7 +283,13 @@ python3 ~/.claude/skills/aso-collection/scripts/search_positions.py \
 2. Внутри каждой темы раздели по intent пользователя
 3. Определи: какая тема и intent — основные для title/subtitle, остальные — в keyword field
 
-С июня 2025 Apple NLP матчит intent и тему, а не только точные слова.
+Apple ранжирует по двум целям: *behavioral relevance* (клики, загрузки) и *textual relevance*,
+которую сама Apple определяет как **semantic fit** запросу — статья Apple, SIGIR 2026,
+arXiv:2602.23234. Главное следствие для нового приложения:
+
+> **Голова выигрывается поведением, хвост — смыслом.** Прирост от семантики максимален там,
+> где поведенческих сигналов мало. У нового приложения их нет вообще, значит ставка —
+> связные intent-кластеры на длинном хвосте, а не точные вхождения в головные запросы.
 
 ### 5. Собери отзывы конкурентов (опционально)
 
@@ -305,9 +394,72 @@ validation = optimizer.validate_character_limits({
 - **Subtitle** (30 символов): второй кластер ключей
 - **Keyword field** (100 символов): результат `optimize_keyword_field()`
 
-**Cross-localization:** Apple индексирует несколько языков в каждом сторефронте. US — 9 языков (en-US, es-MX, ar, zh-Hans, zh-Hant, fr-FR, ko, pt-BR, ru) — каждая незаполненная локаль это +100 chars keyword budget. Заполнять дополнительные локали отдельными ключами (не переводом).
+**Cross-localization — обязательный шаг, не опция**
+
+US-сторефронт индексирует **10 локалей** (официальная таблица Apple, см. `knowledge/aso_metadata.md`):
+`en-US`, `es-MX`, `ar`, `zh-Hans`, `zh-Hant`, `fr-FR`, `ko`, `pt-BR`, `ru`, `vi`.
+
+Каждая локаль даёт **160 символов**, а не 100: title 30 + subtitle 30 + keyword field 100.
+Индексируются все три поля, а не только скрытое. Итого потолок US = **1600 символов**.
+Заполнять только keyword field — потерять две трети бюджета.
+
+**Фразы собираются только внутри одной локали.** Слово из en-US и слово из es-MX не образуют
+фразу (AppTweak 11.2025, Appfigures 06.2026 — проверено уже после NLP-сдвига). Отсюда правило:
+
+> Каждая локаль = **один самодостаточный семантический кластер** со своим якорным
+> существительным в title. Якорь обязан повторяться в каждой локали — без него внутри
+> локали не собирается ни одной фразы. Это не дубль, а условие работы.
+
+**Титулы вторичных локалей — риск ревью пропорционален видимости поля.** Правила «метаданные
+должны быть на языке локали» у Apple нет (прочитан полный текст 2.3.7), публичных отклонений
+за 2025–2026 не зафиксировано. Но 2.3.7 запрещает «irrelevant phrases just to game the system»:
+
+| Поле | Вторичная локаль |
+|---|---|
+| keyword field (100) | 100% целевого языка, агрессивно. Скрыто, ревьюер в обычном флоу не видит |
+| subtitle (30) | Целевой язык, но **читаемой фразой**, не набором слов |
+| title (30) | `Бренд: <естественный дескриптор>`. Самое видимое поле |
+
+⚠️ **es-MX — самая рискованная вторичная локаль, не самая безопасная.** US-пользователь
+с испанским языком системы видит именно es-MX страницу в US App Store. `ar`, `vi`, `ko`,
+`zh-Hant` в US-трафике пренебрежимы — там свободнее всего.
+
+**Чем заполнять.** Для US-focused приложения — английскими ключами во всех вторичных локалях,
+не переводом (кейс Amma Pregnancy Tracker: +49% US visibility за месяц). Но сначала проверь
+реальный спрос на языке локали: если он есть и релевантен — бери его.
 
 **Не применять без подтверждения.**
+
+### 7.5 Дополнительные поверхности индексации
+
+Метаданными в 10 локалях бюджет не исчерпывается. Эти поверхности почти никто из конкурентов
+не занимает — проверь по их листингам, это дешёвое преимущество.
+
+**IAP display names — 30 символов на каждую покупку, индексируются**
+Прямо в доке Apple: «Searches use app and in-app purchase metadata from your product page».
+Названия покупок — ещё одно keyword-поле. Описания покупок не индексируются.
+⚠️ Цифра «64 символа», гуляющая по блогам, неверна: поле в ASC — 30.
+
+**In-app events — name 30 + short description 50, до 10 событий**
+Индексируются name и short description; long description (120) — нет.
+
+**Keyword-linked Custom Product Pages — главный недоиспользованный рычаг**
+Выкатили 30.07.2025, лимит 35 → **70** страниц с 29.10.2025.
+Ключам из **уже одобренного** keyword field назначается отдельная продуктовая страница,
+и она подменяет дефолтную в **органической** выдаче.
+
+- индекс это **не расширяет** — меняется только то, какую страницу видит пользователь
+- комбинация ключей уникальна для одной страницы
+- нельзя брать слова, уже стоящие в title или subtitle
+- CPP локализуются
+
+Куда ставить: на ключи, где по шагу Г мы реально можем взять топ (конкурент №1 слабый),
+а интент отличается от основного. Скриншоты страницы — под этот конкретный интент.
+
+**Промо-текст (170) и описание (4000) на iOS не индексируются.** Не тратить на ключи.
+Промо-текст — конверсия и новости, меняется без ревью.
+
+---
 
 ### 8. Финальный чеклист перед публикацией
 
@@ -334,11 +486,16 @@ for locale, f in locales.items():
 ```
 
 Чеклист:
-- [ ] Нет дублирования слов внутри локали (title / subtitle / keyword field)
-- [ ] Нет дублирования слов между KF разных локалей
-- [ ] Все keyword field ≥ 85 символов
-- [ ] Screenshot captions содержат target keywords (индексируются с июня 2025)
-- [ ] Дополнительные локали заполнены отдельными ключами
+- [ ] Нет дублирования слов **внутри** локали (title / subtitle / keyword field)
+- [ ] Между локалями пересекаются **только якорные слова** — они обязаны повторяться,
+      иначе внутри локали не собирается фраза. Всё остальное пересечение = потеря бюджета
+- [ ] Заполнены все 10 локалей US, каждая ≥85% по всем трём полям (title, subtitle, KF)
+- [ ] Каждая локаль — один связный семантический кластер, а не россыпь слов
+- [ ] Титулы вторичных локалей читаются как названия, а не как набор ключей
+- [ ] Нет чужих торговых марок ни в одном поле (5.2.1)
+- [ ] Screenshot captions написаны под конверсию. Индексация captions **не подтверждена** —
+      ключи туда класть можно, строить на них стратегию нельзя
+- [ ] IAP display names задействованы (30 симв. каждое, индексируются)
 - [ ] Рейтинг приложения ≥ 3.7
 
 Сохрани отчёт в `./aso-collection/data/reports/aso_recommendations_{timestamp}.md`.
@@ -373,7 +530,22 @@ for locale, f in locales.items():
   7. Terms of Use: {ссылка}
   8. Privacy Policy: {ссылка}
 
-- **NLP-оптимизация**: естественно вписать target keywords из keyword field — не спамить, 1–2 вхождения каждого кластера
+- **Главное: описание пишется под цитирование LLM, не под индекс Apple.**
+  На iOS описание поиском **не индексируется** — и это не изменилось. Но по замеру AppTweak
+  (125 000 ответов ChatGPT, 9 489 промптов, US, май 2026) листинги App Store дают **38% всех
+  цитирований**, вместе с Google Play — **47.5%**: больше, чем любые сайты, статьи и PR.
+  Когда человек спрашивает LLM «какое приложение выбрать», модель читает именно описание.
+
+  Из этого следует:
+  - назвать аудиторию явно в первых строках, своими словами, без «for everyone»
+  - **3–5 конкретных сценариев использования**, не больше — размытый список работает хуже
+  - фичи через результат, а не через название фичи
+  - убрать «all-in-one», «универсальное решение» и прочее позиционирование ни о чём
+  - проверяемая конкретика: что именно поддерживается, что нет, какие ограничения
+  - **не добивать до 4000 символов ради объёма** — сжатый текст цитируется лучше
+
+- **NLP-оптимизация**: естественно вписать target keywords — не спамить, 1–2 вхождения кластера.
+  Это вторично по отношению к пункту выше.
 - Tone of voice: взять из анализа конкурентов (формальный / дружелюбный / экспертный)
 - Язык description = язык основной локали (DE → немецкий, US → английский)
 - Не использовать слова "лучший", "номер один", "#1" без доказательств — Apple может отклонить

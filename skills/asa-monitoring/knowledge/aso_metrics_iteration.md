@@ -27,6 +27,7 @@
 |---|---|---|---|
 | **Visibility** | Keyword rankings | Позиция по target ключам | Падение > 5 позиций → аудит metadata/behavioral |
 | **Visibility** | **ASA Impression Share** | % eligible impressions которые мы захватили (range: low–high) | Share > 85% + rank ONE → bid raise бесполезен, фокус на CR; share < 50% + rank > ONE → поднять bid |
+| **Conversion** | **IPM (Installs per Mille)** | installs / impressions × 1000 — комбо CTR × CR, сквозная эффективность кампании | < 3 → проблема в CTR или CR; > 15 → отлично. При запуске CPP: сравнивать IPM до/после — прямой сигнал влияния страницы |
 | **Visibility** | Share of Voice (SOV) | % видимости в keyword set vs. конкуренты | SOV < 20% в core category → расширить coverage |
 | **Visibility** | Search Ad Pollution | Плотность платных объявлений на keyword | Высокий score → сдвинуть фокус на менее конкурентные ключи |
 | **Visibility** | Impressions (App Store) / Store Listing Visitors (GP) | Охват | Падение без metadata изменений → алгоритмический апдейт |
@@ -301,11 +302,34 @@ urllib.request.urlretrieve(res["data"]["downloadUri"], "imp_share.csv")
 - Если share высокий и CR низкий → A/B тест скриншотов / иконки → без изменения bid
 - Если share высокий и CR высокий → keyword уже оптимизирован, масштабировать через новые ключи
 
-### ⚠️ searchPopularity в этом отчёте ненадёжен
+### ⚠️ Ограничения инструментов измерения объёма ключей
+
+**ASA Popularity (`/cm/api/v2/keywords/recommendation`, поле popularity 0–100)**
+
+Popularity score — **глобальная метрика**, не привязана к гео. Apple считает объём запроса по всем сторфронтам вместе. Следствия:
+- Ключ с popularity=5 в немецком сторфронте может иметь вполне достаточный объём именно в Германии — просто глобально он редкий
+- Ключ с popularity=30 может давать нулевые impressions в DE, если весь объём сосредоточен в US
+- RU storefront всегда возвращает popularity=5 — ASA в России не работает
+
+**searchPopularity в Impression Share CSV**
 
 Поле `searchPopularity` в impression share CSV **не передаёт параметр страны** в запросе к бэкенду Apple. Возвращает глобальные данные независимо от conditions. Для non-US рынков (DE, AT, CH) — не использовать. Источник: наблюдение на практике (2026-04).
 
-Вместо этого использовать hints/autocomplete API для оценки объёма запросов в конкретном сторфронте.
+**Apple Search Hints (autocomplete, `keyword_suggest.py`)**
+
+Hints отражают частоту автодополнений **в конкретном сторфронте** — это более гео-точный сигнал. Но:
+- Нет абсолютного объёма — только относительная позиция (HIGH/MEDIUM/LOW)
+- HIGH может означать как 10 000, так и 100 человек/день — неизвестно
+- Появление приложения-конкурента в hints (его название) создаёт ложный HIGH — люди ищут конкурента, не категорийный запрос
+
+**Единственный достоверный гео-сигнал: реальные impressions в кампании**
+
+Запустить ключ с правильным бидом в изолированной кампании → смотреть impressions через 1–2 часа, при нуле поднимать ставку. Это дороже, но точнее любого инструмента.
+
+**Практическое правило для DE рынка:**
+- Hints HIGH + ASA pop ≥ 5 → добавить с bid discovery, проверить через 1–2 часа
+- Hints пусто + ASA pop = 5 → оба инструмента говорят нет, не добавлять
+- ASA pop ≥ 20 → достаточно уверенный сигнал (глобально популярный = скорее всего есть и в DE)
 
 ### Cadence
 

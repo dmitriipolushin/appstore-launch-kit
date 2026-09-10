@@ -15,14 +15,7 @@ SETUP (one time — cookie expires in ~24h, refresh as needed):
 3. Open any campaign → ad group → Keywords tab (recommendations appear)
 4. Find request: POST /reporting/graphql with operationName "getRecommendedKeywordsGql"
 5. Right-click → Copy → Copy as cURL
-6. Update APPLE_SA_COOKIE and APPLE_SA_XSRF in ~/.config/aso-tools/api_keys.env
-
-PREFERRED: run the query from inside a logged-in app-ads.apple.com page instead —
-no cookie handling at all, nothing expires. See SKILL.md step 4B.
-
-HARD LIMIT: results are returned ONLY for adamId belonging to your own ASA org,
-and only within that app's topical space. A competitor's adamId returns an empty
-array with HTTP 200. Check what you have: python3 asa_api.py --list-apps
+6. Update APPLE_SA_COOKIE and APPLE_SA_XSRF in scripts/config/api_keys.env
 
 Usage (run from scripts/asa/):
     python3 keyword_popularity.py --seeds "pet health,dog tracker,cat" --country US
@@ -43,7 +36,7 @@ from env_setup import CONFIG_DIR  # noqa: F401
 
 COOKIE    = os.getenv("APPLE_SA_COOKIE", "")
 XSRF      = os.getenv("APPLE_SA_XSRF", "")
-ADAM_ID   = os.getenv("APPLE_SA_ADAM_ID", "6749845164")
+ADAM_ID   = os.getenv("APPLE_SA_ADAM_ID", "")
 ADGROUP_ID = os.getenv("APPLE_SA_ADGROUP_ID", "2146056918")
 BASE_URL  = "https://app-ads.apple.com/reporting/graphql"
 DELAY_SEC = 0.4
@@ -86,40 +79,20 @@ def fetch_for_seed(seed: str, storefronts: list[str]) -> list[dict]:
         "query": RECOMMENDATION_QUERY,
     }
 
-    try:
-        resp = requests.post(BASE_URL, headers=headers, json=payload, timeout=15)
-    except requests.Timeout:
-        print(f"  TIMEOUT for '{seed}' — Apple троттлит. Пауза и не быстрее 1 req/sec.")
-        return []
+    resp = requests.post(BASE_URL, headers=headers, json=payload, timeout=15)
 
     if resp.status_code in (401, 403):
-        sys.exit(f"ERROR: {resp.status_code} — cookie истёк или пуст.\n"
-                 f"Способ 1 (без cookie): выполнить запрос из браузера на залогиненной\n"
-                 f"  странице app-ads.apple.com — см. SKILL.md, шаг 4В.\n"
-                 f"Способ 2: обновить APPLE_SA_COOKIE / APPLE_SA_XSRF из DevTools.")
+        sys.exit(f"ERROR: {resp.status_code} — cookie expired. Refresh APPLE_SA_COOKIE from DevTools.")
     if not resp.ok:
         print(f"  HTTP {resp.status_code} for seed '{seed}': {resp.text[:200]}")
         return []
 
-    try:
-        data = resp.json()
-    except ValueError:
-        sys.exit("ERROR: пришёл не JSON (обычно HTML страницы логина) — "
-                 "APPLE_SA_COOKIE пуст или протух. См. SKILL.md, шаг 4В.")
+    data = resp.json()
     if data.get("errors"):
         print(f"  API error for '{seed}': {data['errors']}")
         return []
 
     items = (data.get("data") or {}).get("recommendationV2", {}).get("getRecommendedKeywords") or []
-
-    if not items:
-        # Самый частый и самый непонятный режим отказа: HTTP 200 + пустой массив.
-        # Это НЕ проблема авторизации.
-        print(f"  ПУСТО для '{seed}' (HTTP 200). Причина почти всегда одна:\n"
-              f"    adamId={ADAM_ID} либо не из твоей ASA-организации, либо приложение\n"
-              f"    не по теме этого seed. API отдаёт ключи только для своих приложений\n"
-              f"    и только в их тематике; adamId конкурента всегда возвращает пусто.\n"
-              f"    Проверь доступные adamId:  python3 asa_api.py --list-apps")
     return [
         {"keyword": item["name"], "popularity": item["popularity"]}
         for item in items
@@ -132,18 +105,11 @@ def fetch_all(seeds: list[str], storefronts: list[str]) -> dict[str, int]:
     """
     if not COOKIE:
         sys.exit(
-            "ERROR: APPLE_SA_COOKIE не задан.\n\n"
-            "Прежде чем возиться с cookie — проверь, есть ли вообще смысл:\n"
-            "    python3 asa_api.py --list-apps\n"
-            "Popularity отдаётся только для adamId твоей ASA-организации и только\n"
-            "в тематике этого приложения. Нет приложения в нужной нише — данных нет\n"
-            "ни одним способом, включая официальный API.\n\n"
-            "Способ 1 (рекомендуется, без cookie): выполнить GraphQL-запрос изнутри\n"
-            "  залогиненной страницы app-ads.apple.com. См. SKILL.md, шаг 4В.\n\n"
-            "Способ 2: добавить в ~/.config/aso-tools/api_keys.env:\n"
-            "  APPLE_SA_COOKIE=<значение из DevTools>\n"
-            "  APPLE_SA_XSRF=<значение cookie XSRF-TOKEN-CM>\n"
-            "  APPLE_SA_ADAM_ID=<adamId приложения из нужной ниши>"
+            "ERROR: APPLE_SA_COOKIE is not set.\n"
+            "See setup instructions at the top of this file.\n"
+            "Add to scripts/config/api_keys.env:\n"
+            "  APPLE_SA_COOKIE=<value from DevTools>\n"
+            "  APPLE_SA_XSRF=<value of XSRF-TOKEN-CM cookie>"
         )
 
     all_keywords: dict[str, int] = {}
