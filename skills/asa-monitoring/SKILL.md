@@ -220,6 +220,19 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/keyword_popularity.py \
 Hints HIGH + pop ≥ 5 → добавить EXACT с bid $0.80 (discovery). ASA pop ≥ 20 → уверенный сигнал.
 Cookie истекает ~24ч. При 401 — обновить `APPLE_SA_COOKIE` в `~/.config/aso-tools/api_keys.env`.
 
+**Способ без cookie (предпочтительный).** Запрос выполняется изнутри залогиненной
+страницы `app-ads.apple.com` — браузер сам подставляет сессию, ничего не истекает
+раз в сутки и учётные данные никуда не копируются. Полный рецепт с JS-сниппетом —
+в `aso-collection/SKILL.md`, шаг 4В.
+
+⚠️ **Предусловие, которое решает всё.** `getRecommendedKeywords` отдаёт данные только
+для `adamId` **из твоей ASA-организации** и фильтрует выдачу по тематике этого
+приложения. adamId конкурента возвращает **пустой массив с HTTP 200** — это не
+протухший cookie, а отсутствие доступа. Нет своего приложения в нужной нише →
+popularity не получить ничем, включая официальный API v5 (там таких эндпоинтов нет).
+Проверить доступные adamId: `python3 aso-collection/scripts/asa/asa_api.py --list-apps`.
+
+
 ### Органические позиции
 
 ```bash

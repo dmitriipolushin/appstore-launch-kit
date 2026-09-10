@@ -73,6 +73,30 @@ for name in OVERRIDABLE:
             note = f", отстал на {drops}" if drops else ""
             print(f"  ✓ override  {skill}/{name}: +{adds} строк{note}")
 
+print("\n── общие скрипты должны быть симлинками на shared/")
+SHARED_SCRIPTS = {
+    "scripts/env_setup.py": "env_setup.py",
+    "scripts/keyword_suggest.py": "keyword_suggest.py",
+    "scripts/collect_profiles.py": "collect_profiles.py",
+    "scripts/project_config.py": "project_config.py",
+    "scripts/asa/keyword_popularity.py": "keyword_popularity.py",
+}
+n_ok = 0
+for skill in SKILLS:
+    for rel, canon in SHARED_SCRIPTS.items():
+        p = REPO / "skills" / skill / rel
+        if not p.exists() and not p.is_symlink():
+            continue                      # скрипт этому скиллу не нужен
+        if not p.is_symlink():
+            print(f"  ✗ РЕАЛЬНЫЙ ФАЙЛ     {skill}/{rel} — перенеси правку в shared/{canon}")
+            fail = True
+        elif not p.exists():
+            print(f"  ✗ битый симлинк     {skill}/{rel}")
+            fail = True
+        else:
+            n_ok += 1
+print(f"  ✓ {n_ok} симлинков на shared/ на месте")
+
 print("\n── лишние копии общих файлов вне knowledge/")
 strays = [p for p in (REPO / "skills").rglob("*.md")
           if p.name in SHARED and p.is_file() and not p.is_symlink()]

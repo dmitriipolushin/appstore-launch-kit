@@ -150,6 +150,8 @@ Discovery-adgroup с `automatedKeywordsOptIn=True` раньше использо
 
 **Новые ключи ищем до запуска** (`aso-collection`: ASA popularity, search hints, метаданные конкурентов) и проверяем отдельной кампанией на минимальной ставке — не Search Match.
 
+⚠️ ASA popularity доступна только если приложение из нужной ниши уже есть в твоей ASA-организации: `getRecommendedKeywords` отдаёт пустой массив с HTTP 200 для чужих adamId. Если приложение ещё не опубликовано — ключи отбираются по search hints и фактической конкурентности выдачи, а popularity замеряется после релиза.
+
 ### 4. Добавь ключевые слова
 
 Ставки — по bid discovery: без данных о clearing price все ключи стартуют с минимума.

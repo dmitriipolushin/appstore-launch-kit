@@ -74,6 +74,10 @@ skills/<skill>/knowledge/
 свою версию в скилле, если она добавляет содержание (у ASA-скиллов там разделы
 про архитектуру кампаний, Impression Share и IPM) — но не ради простой копии.
 
+Скрипты, общие для нескольких скиллов, живут в `shared/` по тому же принципу:
+`env_setup.py`, `keyword_suggest.py`, `collect_profiles.py`, `project_config.py`,
+`keyword_popularity.py` — один файл, симлинки из скиллов.
+
 Проверка инвариантов:
 
 ```bash
