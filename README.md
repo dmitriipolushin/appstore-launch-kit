@@ -74,9 +74,16 @@ skills/<skill>/knowledge/
 свою версию в скилле, если она добавляет содержание (у ASA-скиллов там разделы
 про архитектуру кампаний, Impression Share и IPM) — но не ради простой копии.
 
-Скрипты, общие для нескольких скиллов, живут в `shared/` по тому же принципу:
-`env_setup.py`, `keyword_suggest.py`, `collect_profiles.py`, `project_config.py`,
-`keyword_popularity.py` — один файл, симлинки из скиллов.
+Скрипты, общие для нескольких скиллов, живут в `shared/` по тому же принципу —
+один файл, симлинки из скиллов:
+
+- `env_setup.py`, `keyword_suggest.py`, `collect_profiles.py`, `project_config.py`,
+  `keyword_popularity.py` — общие для ASO/ASA-скиллов
+- `asa/` — тулкит Apple Search Ads (`logic.py`, `settings.py`, `utils/*`),
+  общий для `asa-launch` и `asa-monitoring`
+
+Пофайлово оставлен только `search_positions.py`: у версий разный CLI-контракт
+(`--app-ids` со списком против `--app-id` для одного приложения).
 
 Проверка инвариантов:
 

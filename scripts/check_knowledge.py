@@ -80,6 +80,14 @@ SHARED_SCRIPTS = {
     "scripts/collect_profiles.py": "collect_profiles.py",
     "scripts/project_config.py": "project_config.py",
     "scripts/asa/keyword_popularity.py": "keyword_popularity.py",
+    # ASA-тулкит, общий для asa-launch и asa-monitoring
+    "scripts/asa/logic.py": "asa/logic.py",
+    "scripts/asa/settings.py": "asa/settings.py",
+    "scripts/asa/utils/asa_api.py": "asa/utils/asa_api.py",
+    "scripts/asa/utils/create_secret.py": "asa/utils/create_secret.py",
+    "scripts/asa/utils/geonames.py": "asa/utils/geonames.py",
+    "scripts/asa/utils/parsing_data.py": "asa/utils/parsing_data.py",
+    "scripts/asa/utils/reports.py": "asa/utils/reports.py",
 }
 n_ok = 0
 for skill in SKILLS:
