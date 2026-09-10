@@ -41,12 +41,48 @@
 
 ```bash
 git clone git@github.com:dmitriipolushin/appstore-launch-kit.git && cd appstore-launch-kit
-for s in aso-collection app-store-optimization app-store-screenshots asc-metadata; do
-  ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
-done
+./install.sh              # симлинки (рекомендуется)
+./install.sh --check      # посмотреть, что стоит сейчас
 ```
 
 Симлинки, а не копии — обновления в репозитории подхватываются сразу.
+Если копии всё же нужны, `./install.sh --copy` разыменует внутренние симлинки (`cp -RL`);
+обычный `cp -r` или `rsync -a` оставит битые ссылки на общий `knowledge/`.
+
+### Раскладка базы знаний
+
+Восемь файлов базы знаний раньше лежали копиями в каждом скилле и разъехались —
+одна и та же ошибка жила в четырёх версиях. Теперь:
+
+```
+knowledge/                       ← единственный источник правды, 8 файлов
+skills/<skill>/knowledge/
+    aso_algorithms.md            → симлинк на ../../../knowledge/
+    aso_creatives.md             → симлинк
+    aso_foundations.md           → симлинк
+    aso_social_signals.md        → симлинк
+    aso_metadata.md              → симлинк
+    aso_keyword_research.md      → симлинк
+    aso_theory_base.md           → симлинк ИЛИ своя версия, если что-то добавляет
+    aso_metrics_iteration.md     → симлинк ИЛИ своя версия
+    asa_campaign_architecture.md ← только у ASA-скиллов
+    api_snippets.md              ← только у asa-monitoring
+    decision_gates.md            ← только у asa-monitoring
+```
+
+Первые шесть файлов правятся **только** в `knowledge/`. Последние два допускают
+свою версию в скилле, если она добавляет содержание (у ASA-скиллов там разделы
+про архитектуру кампаний, Impression Share и IPM) — но не ради простой копии.
+
+Проверка инвариантов:
+
+```bash
+python3 scripts/check_knowledge.py
+```
+
+Скрипт падает с кодом 1, если общий файл подменили реальной копией, если симлинк
+битый или если override ничего не добавляет к каноническому файлу. Показывает,
+насколько overrides отстали от `knowledge/`.
 
 ### Ключи для aso-collection
 
