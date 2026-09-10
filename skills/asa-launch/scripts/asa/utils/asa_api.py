@@ -15,9 +15,10 @@ class SearchAdsAPI:
         import os
         from pathlib import Path as _Path
         keys_dir = os.environ.get("ASA_KEYS_DIR", str(_Path.home() / ".config" / "aso-tools" / "keys"))
-        # org_id — не секрет, дефолт = основной аккаунт Along; свой аккаунт задаётся через ASA_ORG_ID
-        org_id = os.environ.get("ASA_ORG_ID", "20644340")
-        missing = [v for v in ("ASA_CLIENT_ID", "ASA_KEY_ID") if not os.environ.get(v)]
+        # org_id обязателен и задаётся окружением: зашивать чужой orgId нельзя.
+        # Узнать свой:  python3 skills/aso-collection/scripts/asa/asa_api.py --list-orgs
+        org_id = os.environ.get("ASA_ORG_ID")
+        missing = [v for v in ("ASA_CLIENT_ID", "ASA_KEY_ID", "ASA_ORG_ID") if not os.environ.get(v)]
         if missing:
             raise RuntimeError(
                 "Не заданы переменные Apple Search Ads: " + ", ".join(missing) + ".\n"
