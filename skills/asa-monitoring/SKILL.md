@@ -220,6 +220,31 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/keyword_popularity.py \
 Hints HIGH + pop ≥ 5 → добавить EXACT с bid $0.80 (discovery). ASA pop ≥ 20 → уверенный сигнал.
 Cookie истекает ~24ч. При 401 — обновить `APPLE_SA_COOKIE` в `~/.config/aso-tools/api_keys.env`.
 
+**Apple Ads Platform API — подсказки ключей с popularity (без cookie).**
+
+С августа 2026 у Apple есть `/v1/suggestions/keywords/query`: отдаёт ключи с
+popularity 0-100 по своему приложению. Cookie не нужен, авторизация обычная.
+
+```bash
+python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
+    --seeds "ki song,suno,ai song" --country DE
+```
+
+Без `--seeds` вернёт общие головные запросы жанра (youtube, spotify) — бесполезно.
+Засевать нишевыми словами обязательно.
+
+⚠️ Фильтр `countriesOrRegions` Apple игнорирует: DE/AT/CH возвращают идентичные
+списки, popularity не привязана к стране.
+
+Там же — официальный топ-500 запросов на жанр на страну:
+
+```bash
+python3 shared/asa/platform_api.py --popularity --month 2026-08 --countries DE,AT,CH --out pop.json
+```
+
+Покрытие обрывается на SP≈48-51 — длинный хвост в него не попадает, поэтому
+нишевые ключи там искать бесполезно, только головные и брендовые.
+
 **Способ без cookie (предпочтительный).** Запрос выполняется изнутри залогиненной
 страницы `app-ads.apple.com` — браузер сам подставляет сессию, ничего не истекает
 раз в сутки и учётные данные никуда не копируются. Полный рецепт с JS-сниппетом —
