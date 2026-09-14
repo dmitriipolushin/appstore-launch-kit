@@ -31,8 +31,12 @@ class SearchAdsAPI:
             pem="apple_ads_private_key.pem",
             key="apple_ads_public_key.pem",
             client_id=client_id,
-            # У Apple Search Ads team_id совпадает с client_id, если явно не задан отдельный
-            team_id=os.environ.get("ASA_TEAM_ID", client_id),
+            # teamId и clientId в Apple Ads совпадают. ASA_TEAM_ID берём, только
+            # если он от ТОГО ЖЕ кабинета: при работе с двумя аккаунтами
+            # api_keys.env хранит один teamId, а clientId переопределяют
+            # окружением — несовпадающая пара даёт invalid_client.
+            team_id=(os.environ.get("ASA_TEAM_ID")
+                     if os.environ.get("ASA_TEAM_ID") == client_id else client_id),
             key_id=os.environ["ASA_KEY_ID"],
             certificates_dir_path=keys_dir + "/",
         )
