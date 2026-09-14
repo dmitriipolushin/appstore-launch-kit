@@ -49,8 +49,6 @@ def transform_asa_keywords(keywords: list[dict]):
         metadata = keyword['metadata']
         total = keyword['total']
         name = metadata['keyword']
-        if name == 'laadpaal app': 
-            print()
         if metadata['matchType'] == 'EXACT': name = f"[{name}]"
 
         info = {

@@ -4,6 +4,14 @@ Fetch ASA metrics in two requests:
   1. reports/campaigns  — all campaign metrics at once (O(1) regardless of campaign count)
   2. per-campaign keyword fetch — only for orphan campaigns not in config
 
+С --keywords вместо строки-на-кампанию пишется строка-на-ключ (1 запрос на
+кампанию). Нужно для архитектуры «1 ключ = 1 адгруппа»: там в кампании
+десятки ключей, и campaign-level строка схлопывает их в одну, теряя разбивку.
+
+⚠️ В keyword-режиме не видно Search Match: у Discovery-адгруппы нет targeting-
+ключей, и в keyword-отчёт она не попадает вовсе. Сумма строк будет меньше
+расхода кампании ровно на неё — сверять объём только по campaign-level.
+
 Usage:
     python3 asa_fetch.py --project ./asa-monitoring --config ./asa-launch/config/campaigns_v2.json --days 7
     python3 asa_fetch.py --project ./asa-monitoring --config ./asa-launch/config/campaigns_v2.json --since 2026-04-23
@@ -269,6 +277,8 @@ def main():
     parser.add_argument("--since", help="Start date YYYY-MM-DD")
     parser.add_argument("--end", help="End date YYYY-MM-DD (default: today)")
     parser.add_argument("--days", type=int)
+    parser.add_argument("--keywords", action="store_true",
+                        help="Строка на ключ, а не на кампанию (архитектура «1 ключ = 1 адгруппа»)")
     parser.add_argument("--searchterms", action="store_true",
                         help="Also fetch search terms (only for campaigns with impressions > 0)")
     args = parser.parse_args()
@@ -378,6 +388,44 @@ def main():
     metrics_rows = []
     st_campaign_ids = []
     unknown_kw = 0
+
+    # Строка на ключ вместо строки на кампанию. В кампании с десятками адгрупп
+    # campaign-level агрегат теряет разбивку, а fetch_api_meta проставляет
+    # keyword только когда активный ключ в кампании ровно один.
+    if args.keywords:
+        for cid, parsed in aggregated.items():
+            cname = parsed["campaign_name"]
+            country = (config_lookup.get(cid, {}).get("country")
+                       or api_meta.get(cid, {}).get("country") or infer_country(cname))
+            kws = fetch_keywords_for_orphan(api, int(cid), cname, start_date, end_date)
+            for kw in kws:
+                impr = kw.get("impressions", 0)
+                inst = kw.get("installs", 0)
+                metrics_rows.append({
+                    "fetch_date": fetch_date, "period_start": start_date, "period_end": end_date,
+                    "campaign_id": cid, "campaign_name": cname,
+                    "country": country, "status": parsed["status"],
+                    "keyword": kw.get("keyword", ""), "bid": kw.get("bid", 0),
+                    "impressions": impr, "taps": kw.get("taps", 0), "installs": inst,
+                    "spend": round(kw.get("spends", 0), 4),
+                    "ttr": round(kw.get("ttr", 0) * 100, 2),
+                    "cr": round(kw.get("cr", 0) * 100, 2),
+                    "avg_cpt": round(kw.get("avgCPT", 0), 4),
+                    "avg_cpa": round(kw.get("avgCPA", 0), 4),
+                    "ipm": round(inst / impr * 1000, 1) if impr else 0,
+                })
+            st_campaign_ids.append((cid, cname))
+        upsert_rows(metrics_path, METRICS_FIELDS, metrics_rows, period_key)
+        with_impr = sum(1 for r in metrics_rows if r["impressions"] > 0)
+        print(f"\n\u2713 Upserted {len(metrics_rows)} keyword rows "
+              f"({with_impr} with impressions) \u2192 {metrics_path}")
+        if args.searchterms:
+            st_rows = []
+            for cid, cname in st_campaign_ids:
+                st_rows.extend(fetch_searchterms(api, int(cid), start_date, end_date))
+            upsert_rows(st_path, SEARCHTERMS_FIELDS, st_rows, period_key)
+            print(f"\u2713 Upserted {len(st_rows)} search term rows \u2192 {st_path}")
+        return
 
     for cid, parsed in aggregated.items():
         info = config_lookup.get(cid)
