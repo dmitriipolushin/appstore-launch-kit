@@ -36,7 +36,8 @@ description: Собирает первичный ASO-набор для ново�
 Никогда не предлагать subtitle в формате перечисления через запятую («трек, кавер, лирика»). Subtitle = законченная фраза, которая сама является поисковым запросом. Структура: глагол + объект + дифференциатор.
 
 **Subtitle конкурентов — только через AppStoreSpy**
-iTunes API не возвращает subtitle. Для анализа конкурентов использовать AppStoreSpy (`/v1/ios/apps/{id}` → поле `short`) раздельно для каждой локали.
+iTunes API не возвращает subtitle. Забирать раздельно по каждой локали:
+`python3 ~/.claude/skills/aso-collection/scripts/appstorespy_cli.py subtitle <app_id> --country DE --language de_DE`
 
 **Кросс-локали — исследовать перед работой**
 Не угадывать, какие локали индексирует целевой сторефронт. Запустить отдельного агента с задачей: «исследуй, какие локали индексирует App Store сторефронт {country}» — и использовать результат.
@@ -49,7 +50,8 @@ iTunes API не возвращает subtitle. Для анализа конку�
 Все API-ключи хранятся в `~/.config/aso-tools/api_keys.env` — скрипты загружают их оттуда сами
 (через `scripts/env_setup.py`). Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
 
-Нужны для этого скилла: `APPSTORESPY_API_KEY`, а для Search Popularity — `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
+Нужны для этого скилла: `APPSTORESPY_API_KEY` (весь анализ конкурентов — команды в
+[`knowledge/appstorespy_api.md`](../../knowledge/appstorespy_api.md)), а для Search Popularity — `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
 (живут ~24 часа; `401` от `keyword_popularity.py` = пора обновить cookie из DevTools на app-ads.apple.com).
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
@@ -88,13 +90,37 @@ mkdir -p ./aso-collection/{config,data/{raw,keywords,reports}}
 ### 2. Составь список конкурентов
 
 **Вариант А — пользователь даёт список**
-Пользователь называет приложения или App Store ссылки. Для каждого извлеки App ID и проверь через AppStoreSpy MCP `get_detailed_app_info` — покажи таблицу с `downloads_month`, `revenue_month`, чтобы пользователь подтвердил что это нужные конкуренты.
+Пользователь называет приложения или App Store ссылки. Для каждого извлеки App ID и покажи
+таблицу с загрузками и выручкой, чтобы он подтвердил, что это нужные конкуренты:
 
-**Вариант Б — discovery через iTunes Search (работает всегда)**
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/appstorespy_cli.py app <app_id> \
+  --fields name,short,downloads,revenue,rating_count,rating_avg,released
+```
 
-⚠️ AppStoreSpy MCP (`search_ios_apps`) есть не в каждом окружении, а REST-поиск AppStoreSpy
-молча игнорирует параметр `query` и возвращает нерелевантный список. Проверь MCP; если его нет —
-ищи через iTunes, он бесплатный и отдаёт ровно то, что видит пользователь в поиске App Store:
+**Вариант Б — разворачивание от известных конкурентов (нужен APPSTORESPY_API_KEY)**
+
+Самый быстрый способ получить длинный список: взять 2-3 приложения из варианта А и
+запросить похожие. `--link from` — кого App Store показывает похожими на них,
+`--link to` — в чьих списках похожих они стоят сами (часто другой список):
+
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/appstorespy_cli.py similar <app_id> --link from --limit 30 \
+  --fields id,name,downloads_month,revenue_month,rating_count
+```
+
+Подобрать конкурентов по параметрам ниши, когда отправной точки нет вообще:
+
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/appstorespy_cli.py query \
+  --category HEALTH_AND_FITNESS --min-downloads 20000 --limit 30
+```
+
+Остальные команды анализа — в [`knowledge/appstorespy_api.md`](../../knowledge/appstorespy_api.md).
+
+**Вариант В — discovery через iTunes Search (работает всегда, без ключей)**
+
+iTunes бесплатный и отдаёт ровно то, что видит пользователь в поиске App Store:
 
 ```bash
 for q in "ключ 1" "ключ 2" "ключ 3"; do
@@ -108,10 +134,9 @@ for a in json.load(sys.stdin)['results']:
 done
 ```
 
-Метрики (downloads/revenue) добираются потом поштучно через AppStoreSpy REST:
-`GET https://api.appstorespy.com/v1/ios/apps/{id}` с заголовком `API-KEY: $APPSTORESPY_API_KEY`
-(именно `API-KEY`, не `Authorization: Bearer`). Поля: `name`, `short` (subtitle), `downloads`,
-`revenue`, `rating_count`, `rating_avg`, `released`.
+Метрики (downloads/revenue) добираются потом поштучно командой `app` из варианта А.
+Помни: это оценки модели, а не факт — годятся для сравнения конкурентов между собой,
+но не как «реальная выручка».
 
 Покажи топ результаты пользователю, пусть выберет релевантных.
 

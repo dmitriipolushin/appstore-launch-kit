@@ -27,6 +27,7 @@
 | «Залей метаданные в App Store Connect» | [`skills/asc-metadata/SKILL.md`](skills/asc-metadata/SKILL.md) |
 | «Помоги пройти модерацию», «получил reject», «что писать в Notes» | [`docs/app-store-review-guide.md`](docs/app-store-review-guide.md) |
 | «Посчитай ASO-скор», «спланируй A/B тест», «проанализируй отзывы» | [`skills/app-store-optimization/`](skills/app-store-optimization/) — набор автономных Python-скриптов |
+| «Проанализируй конкурента», «найди похожие приложения», «сколько он зарабатывает», «оцени нишу», «позиции в чартах» | [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) — инструменты анализа чужих приложений через `shared/appstorespy_cli.py` |
 | «Мы готовы публиковаться, что делать» | Полный маршрут ниже ↓ |
 
 ---
@@ -81,7 +82,9 @@
 
 - Search Popularity берётся **только** из Apple Search Ads (`skills/aso-collection/scripts/asa/keyword_popularity.py`). Нельзя оценить объём запроса на глаз.
 - Apple Search Hints дают порядок подсказок, но **не объём** — термин с Hints 10000 может иметь ASA Popularity 5. Всегда верифицируй.
-- Subtitle конкурентов **не возвращается** iTunes Lookup API. Только через AppStoreSpy (`/v1/ios/apps/{id}` → поле `short`).
+- Subtitle конкурентов **не возвращается** iTunes Lookup API. Только через AppStoreSpy:
+  `python3 shared/appstorespy_cli.py subtitle <app_id> --country DE --language de_DE`, отдельно по каждой локали.
+- Загрузки и выручка конкурентов из AppStoreSpy — **оценка модели, а не факт**. Годится порядок величины и динамика; нельзя подавать как реальные цифры конкурента.
 - Если нужного API-ключа нет — скажи об этом прямо и предложи то, что можно сделать без него. Не заполняй пробелы догадками.
 
 ### 5. Скриншоты — только реальные экраны приложения
@@ -123,6 +126,13 @@
 │   └── screenshots-generator/    ← РАБОЧИЙ пример по app-store-screenshots:
 │                                   Next.js, 4 локали, экспорт в PNG. Читай его код,
 │                                   а не пиши генератор с нуля.
+├── shared/
+│   ├── appstorespy.py            ← клиент AppStoreSpy: все iOS-эндпоинты
+│   ├── appstorespy_cli.py        ← CLI к нему — анализ чужих приложений в сторе
+│   └── ...                       ← общие скрипты скиллов (ASA, профили, ключи)
+├── knowledge/
+│   ├── appstorespy_api.md        ← справочник «задача → команда» по AppStoreSpy
+│   └── ...                       ← 8 файлов теории ASO
 └── config/
     └── api_keys.env.example      ← шаблон для ключей aso-collection
 ```
@@ -139,13 +149,50 @@
 
 ---
 
+## Инструменты анализа приложений в сторе
+
+Всё, что касается **чужих** приложений — конкуренты, их метаданные, обороты, позиции —
+делается через `shared/appstorespy_cli.py`. Это CLI к AppStoreSpy API, покрывающий все
+iOS-эндпоинты. Полный справочник с примерами — [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md).
+
+| Что нужно | Команда |
+|---|---|
+| Subtitle конкурента (iTunes его не отдаёт) | `subtitle <app_id> --country DE --language de_DE` |
+| Полный профиль конкурента | `app <app_id> --profile` |
+| Найти конкурентов, зная одно приложение | `similar <app_id> --link from --limit 30` |
+| Кто считает конкурентом нас | `similar <app_id> --link to` |
+| Подобрать приложения по параметрам ниши | `query --category HEALTH_AND_FITNESS --min-downloads 50000` |
+| Размер ниши одним числом | `summary --category HEALTH_AND_FITNESS` |
+| Загрузки и выручка по месяцам | `estimates <app_id> --from 2026-01-01 --to 2026-09-01` |
+| Динамика позиций в топ-чарте | `rankings --app <app_id> --from 2026-09-01 --to 2026-09-20` |
+| Портфель и обороты разработчика | `developer <dev_id>`, `developer-estimates <dev_id>` |
+| Отзывы глубже свежей страницы RSS | `reviews <app_id> --limit 100` |
+
+```bash
+python3 shared/appstorespy_cli.py --help          # все команды
+python3 shared/appstorespy_cli.py similar --help  # аргументы конкретной
+```
+
+**Три вещи, на которых легко ошибиться:**
+
+1. `rankings` — это позиции в **топ-чартах категорий**, а не в поисковой выдаче.
+   Позиция по ключевому слову — `skills/aso-collection/scripts/search_positions.py`.
+2. `search` ищет по названиям **внутри базы AppStoreSpy**, это не выдача App Store по запросу.
+3. Часть команд (`summary`, `reviews`, `aggregates-countries`, `search-jobs`) доступна
+   не на всех тарифах и вернёт 403. Это не поломка и не битый ключ — просто скажи
+   пользователю, что эндпоинт вне его тарифа, и обойдись остальными.
+
+Каждый запрос тратит кредиты аккаунта. Запрашивай `--fields` под задачу, а не все поля подряд.
+
+---
+
 ## Ключи и внешние сервисы
 
 `skills/aso-collection/` — единственная часть, которой нужны внешние ключи. Всё остальное работает без них.
 
 | Нужен для | Ключ | Где взять |
 |---|---|---|
-| Профили и subtitle конкурентов, поиск приложений | `APPSTORESPY_API_KEY` | appstorespy.com |
+| Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
 | Search Popularity ключевых слов (0–100) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В |
 | Заливка метаданных в App Store Connect | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
 

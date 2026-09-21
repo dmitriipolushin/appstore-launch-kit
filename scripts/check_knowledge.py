@@ -78,6 +78,8 @@ SHARED_SCRIPTS = {
     "scripts/env_setup.py": "env_setup.py",
     "scripts/keyword_suggest.py": "keyword_suggest.py",
     "scripts/collect_profiles.py": "collect_profiles.py",
+    "scripts/appstorespy.py": "appstorespy.py",
+    "scripts/appstorespy_cli.py": "appstorespy_cli.py",
     "scripts/project_config.py": "project_config.py",
     "scripts/asa/keyword_popularity.py": "keyword_popularity.py",
     # ASA-тулкит, общий для asa-launch и asa-monitoring

@@ -32,6 +32,7 @@
 | **[skills/asc-metadata](skills/asc-metadata/)** | Заливка метаданных в App Store Connect через официальный API — все локали, обход подводных камней |
 | **[skills/app-store-optimization](skills/app-store-optimization/)** | Автономные скрипты: ASO-скор, планировщик A/B-тестов, анализ отзывов, чеклист запуска |
 | **[examples/screenshots-generator](examples/screenshots-generator/)** | Рабочий генератор скриншотов на Next.js — 4 локали, экспорт в PNG под размеры Apple. Референс кода, а не заготовка |
+| **[knowledge/appstorespy_api.md](knowledge/appstorespy_api.md)** | Анализ чужих приложений в сторе через AppStoreSpy: subtitle конкурентов, похожие приложения, оценки загрузок и выручки, позиции в топ-чартах, разработчики. CLI — `shared/appstorespy_cli.py` |
 
 ---
 
@@ -105,7 +106,13 @@ cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env
 pip install requests python-dotenv PyJWT cryptography
 ```
 
-Без ключей всё равно работают: профили и отзывы конкурентов через iTunes API, Apple Search Hints, позиции в поиске, вся методология и knowledge-база. Не работает: Search Popularity (0–100) и subtitle конкурентов.
+Без ключей всё равно работают: профили и отзывы конкурентов через iTunes API, Apple Search Hints, позиции в поиске, вся методология и knowledge-база. Не работает: Search Popularity (0–100) и весь анализ через AppStoreSpy — subtitle конкурентов, похожие приложения, оценки загрузок и выручки, позиции в чартах.
+
+Что даёт `APPSTORESPY_API_KEY` — с командами и примерами: [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md).
+
+```bash
+python3 shared/appstorespy_cli.py --help
+```
 
 ---
 

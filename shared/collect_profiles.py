@@ -9,7 +9,6 @@ Usage:
 
 import argparse
 import json
-import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -18,9 +17,9 @@ from pathlib import Path
 import requests
 from typing import Optional
 from env_setup import CONFIG_DIR, KEYS_DIR  # noqa: F401
+from appstorespy import fetch_subtitle
 
 ITUNES_LOOKUP = "https://itunes.apple.com/lookup"
-APPSTORESPY_BASE = "https://api.appstorespy.com/v1/ios/apps"
 
 ITUNES_FIELD_MAP = {
     "trackName": "title",
@@ -33,25 +32,6 @@ ITUNES_FIELD_MAP = {
     "primaryGenreName": "category",
     "sellerName": "developer_name",
 }
-
-
-def fetch_subtitle_appstorespy(app_id: str, country: str = "us") -> Optional[str]:
-    """Fetch subtitle (short) from AppStoreSpy. Returns None if unavailable."""
-    api_key = os.environ.get("APPSTORESPY_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        resp = requests.get(
-            f"{APPSTORESPY_BASE}/{app_id}",
-            params={"country": country.upper(), "language": "en_US"},
-            headers={"API-KEY": api_key},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        return resp.json().get("short") or None
-    except Exception as e:
-        print(f"  ⚠️  AppStoreSpy subtitle fetch failed for {app_id}: {e}", file=sys.stderr)
-        return None
 
 
 def fetch_itunes(app_id: str, country: str = "us") -> Optional[dict]:
@@ -130,7 +110,7 @@ def main():
         profile = build_profile(app_id, raw)
         # Enrich subtitle from AppStoreSpy if iTunes didn't return it
         if profile["itunes"].get("subtitle") is None:
-            subtitle = fetch_subtitle_appstorespy(app_id, args.country)
+            subtitle = fetch_subtitle(app_id, args.country)
             if subtitle:
                 profile["itunes"]["subtitle"] = subtitle
                 profile["_missing_fields"] = [f for f in profile["_missing_fields"] if f != "subtitle"]

@@ -1,0 +1,1 @@
+../../../shared/appstorespy_cli.py
