@@ -16,12 +16,27 @@ Credentials — канонические `ASA_*` из `~/.config/aso-tools/api_k
 (переменные окружения перекрывают файл). Приватный ключ — `ASA_KEYS_DIR`,
 по умолчанию `~/.config/aso-tools/keys/`.
 
+`ASA_ORG_ID` можно не задавать: если ключу доступен ровно один рекламный
+аккаунт, он берётся из `/acls` автоматически.
+
 CLI:
     python3 shared/asa/platform_api.py --list-accounts
     python3 shared/asa/platform_api.py --suggest-keywords --app-id 123 \
         --seeds "ki song,suno" --country DE
-    python3 shared/asa/platform_api.py --popularity --month 2026-08 \
-        --countries DE,AT,CH --out popularity.json
+
+    # Проверить свой список ключей: какие в топ-500 жанра и с какой popularity
+    python3 shared/asa/platform_api.py --popularity --countries DE,AT \
+        --terms "schrittzähler,pilates zu hause,kalorienzähler"
+    python3 shared/asa/platform_api.py --popularity --countries DE --terms-file keys.txt
+
+    # Топ жанра / все частые запросы со словом / понедельный срез
+    python3 shared/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS
+    python3 shared/asa/platform_api.py --popularity --countries US --contains song
+    python3 shared/asa/platform_api.py --popularity --week 2026-09-13 --countries DE \
+        --genre PHOTO_VIDEO --out week.csv
+
+Без --month/--week берётся последний опубликованный месяц (Apple обновляет
+месячные данные 5-го числа за предыдущий месяц).
 """
 import datetime, json, os, sys, time
 from pathlib import Path
@@ -35,6 +50,33 @@ from Cryptodome.PublicKey import ECC
 
 BASE = "https://api.ads.apple.com/v1"
 TOKEN_URL = "https://appleid.apple.com/auth/oauth2/token"
+
+# Жанры search-term-popularity. Других нет: MUSIC, MEDICAL, BOOKS, NAVIGATION,
+# WEATHER и т.п. эндпоинт не знает — их запросы ищи в ENTERTAINMENT/LIFESTYLE.
+POPULARITY_GENRES = (
+    "BUSINESS", "EDUCATION", "ENTERTAINMENT", "FINANCE", "FOOD_DRINK", "GAMES",
+    "HEALTH_FITNESS", "LIFESTYLE", "NEW_PUBLICATION", "PHOTO_VIDEO",
+    "PRODUCTIVITY_UTILITIES", "SHOPPING", "SOCIAL_NETWORKING", "SPORTS", "TRAVEL",
+)
+POPULARITY_PAGE = 5000   # больше Apple не отдаёт за запрос (400 VALUE_OUT_OF_RANGE)
+TERMS_CHUNK = 500        # IN принимает и 2000, режем с запасом
+MAX_BACKOFF = 16         # сек, по рекомендации Apple для 429
+
+
+def last_published_month(today=None) -> str:
+    """Последний месяц, за который Apple уже выложила данные (обновление 5-го)."""
+    today = today or datetime.datetime.utcnow().date()
+    first = today.replace(day=1)
+    prev = first - datetime.timedelta(days=1)
+    if today.day < 6:
+        prev = prev.replace(day=1) - datetime.timedelta(days=1)
+    return prev.strftime("%Y-%m")
+
+
+def week_start(date_str: str) -> datetime.date:
+    """Воскресенье недели, в которую попадает дата (недели Apple — Вс–Сб)."""
+    d = datetime.date.fromisoformat(date_str)
+    return d - datetime.timedelta(days=(d.weekday() + 1) % 7)
 
 
 def _keys_dir() -> Path:
@@ -105,30 +147,54 @@ class PlatformAPI:
         self._token = r.json()["access_token"]
         return self._token
 
+    def _resolve_org_id(self):
+        """Без X-AP-Context Apple отвечает 403 «A required header was not
+        specified». Если ASA_ORG_ID не задан, а аккаунт у ключа один — берём его."""
+        if self.org_id:
+            return self.org_id
+        accs = self.accounts()
+        if len(accs) != 1:
+            names = ", ".join(f"{a['name']} (orgId={a['orgId']})" for a in accs) or "нет"
+            raise RuntimeError(
+                "ASA_ORG_ID не задан, а автоматически выбрать аккаунт нельзя — "
+                f"доступны: {names}. Пропиши нужный ASA_ORG_ID в api_keys.env.")
+        self.org_id = str(accs[0]["orgId"])
+        return self.org_id
+
     def _headers(self, ctx=None):
         h = {"Authorization": f"Bearer {self.token()}",
              "Content-Type": "application/json"}
-        if ctx:
-            h["X-AP-Context"] = ctx
-        elif self.org_id:
-            h["X-AP-Context"] = f"adAccountId={self.org_id}"
+        h["X-AP-Context"] = ctx or f"adAccountId={self._resolve_org_id()}"
         return h
 
     def _post(self, path, body, ctx=None, tries=4, timeout=300):
-        last = None
-        for i in range(tries):
+        """POST с ретраем сетевых обрывов и 429.
+
+        На 429 ждём Retry-After (затем RateLimit-Reset), удваивая паузу до
+        MAX_BACKOFF. Если окно почти исчерпано — притормаживаем заранее.
+        """
+        last, backoff, net_fails = None, 1, 0
+        while True:
             try:
                 r = requests.post(BASE + path, headers=self._headers(ctx),
                                   json=body, timeout=timeout)
-                if r.status_code >= 300:
-                    raise RuntimeError(f"POST {path} -> {r.status_code} {r.text[:300]}")
-                return r.json()
             except requests.exceptions.RequestException as e:
-                last = e
-                if i == tries - 1:
-                    break
-                time.sleep(2 * (i + 1))
-        raise RuntimeError(f"POST {path}: сеть недоступна после {tries} попыток ({last})")
+                last, net_fails = e, net_fails + 1
+                if net_fails >= tries:
+                    raise RuntimeError(
+                        f"POST {path}: сеть недоступна после {tries} попыток ({last})")
+                time.sleep(2 * net_fails)
+                continue
+            if r.status_code == 429:
+                wait = r.headers.get("Retry-After") or r.headers.get("RateLimit-Reset")
+                time.sleep(max(float(wait or 0), backoff))
+                backoff = min(backoff * 2, MAX_BACKOFF)
+                continue
+            if r.status_code >= 300:
+                raise RuntimeError(f"POST {path} -> {r.status_code} {r.text[:300]}")
+            if r.headers.get("RateLimit-Remaining") == "0":
+                time.sleep(float(r.headers.get("RateLimit-Reset") or 1))
+            return r.json()
 
     # --- эндпоинты ---
 
@@ -160,21 +226,95 @@ class PlatformAPI:
         return [{"text": x.get("text"), "popularity": x.get("popularity") or 0}
                 for x in (res.get("result") or [])]
 
-    def search_term_popularity(self, month, countries=None):
-        """Официальный топ-500 запросов на жанр на страну за месяц.
+    def search_term_popularity(self, month=None, week=None, countries=None,
+                               genres=None, terms=None, contains=None):
+        """Официальный топ-500 запросов на жанр × страну.
 
-        month — 'YYYY-MM'. Тело фильтров не принимает: эндпоинт отдаёт весь
-        датасет (~300k строк за месяц), фильтруем на своей стороне.
-        Покрытие обрывается на SP≈48-51 — длинный хвост сюда не попадает.
+        month — 'YYYY-MM' (хранится 15 месяцев) или week — любая дата недели
+        Вс–Сб (65 недель). Без обоих — последний опубликованный месяц.
+        Фильтры применяются на стороне Apple; terms — точный поиск по списку,
+        регистр не важен; contains — подстрока.
+
+        Покрытие — только голова: в DE порог ≈ 49 по searchPopularity1to100,
+        в малых странах выше. Отсутствие ключа в выдаче значит «ниже порога».
+        Один запрос может встретиться в нескольких жанрах — это разные строки.
         """
-        start = f"{month}-01"
-        res = self._post("/insights/apps/search-term-popularity/query",
-                         {"timeRange": {"granularity": "MONTHLY",
-                                        "start": start, "end": start}})
-        rows = res["result"]["rows"]
+        if week:
+            start = week_start(week)
+            tr = {"granularity": "WEEKLY_SUN_SAT", "start": start.isoformat(),
+                  "end": (start + datetime.timedelta(days=6)).isoformat()}
+        else:
+            first = f"{month or last_published_month()}-01"
+            tr = {"granularity": "MONTHLY", "start": first, "end": first}
+
+        base = []
         if countries:
-            rows = [r for r in rows if r["countryOrRegion"] in set(countries)]
+            base.append({"field": "countryOrRegion", "operator": "IN",
+                         "value": [c.upper() for c in countries]})
+        if genres:
+            bad = [g for g in genres if g not in POPULARITY_GENRES]
+            if bad:
+                raise ValueError(f"Неизвестные жанры: {bad}. "
+                                 f"Допустимы: {', '.join(POPULARITY_GENRES)}")
+            base.append({"field": "genre", "operator": "IN", "value": list(genres)})
+        if contains:
+            base.append({"field": "searchTerm", "operator": "CONTAINS", "value": contains})
+
+        term_list = list(dict.fromkeys(t.strip().lower() for t in terms or [] if t.strip()))
+        chunks = [term_list[i:i + TERMS_CHUNK]
+                  for i in range(0, len(term_list), TERMS_CHUNK)] or [None]
+        rows = []
+        for chunk in chunks:
+            filters = base + ([{"field": "searchTerm", "operator": "IN", "value": chunk}]
+                              if chunk else [])
+            offset = 0
+            while True:
+                body = {"timeRange": tr,
+                        "fields": ["rankInGenre", "searchPopularityInGenre",
+                                   "searchPopularity1to100", "searchPopularity1to5"],
+                        "pagination": {"offset": offset, "pageSize": POPULARITY_PAGE}}
+                if filters:
+                    body["filters"] = filters
+                page = (self._post("/insights/apps/search-term-popularity/query", body)
+                        .get("result") or {}).get("rows") or []
+                rows.extend(page)
+                if len(page) < POPULARITY_PAGE:
+                    break
+                offset += POPULARITY_PAGE
         return rows
+
+
+def _print_terms_report(rows, terms, countries):
+    """По каждому ключу и стране: popularity и места в жанрах, либо «ниже порога»."""
+    found = {}
+    for r in rows:
+        found.setdefault((r["searchTerm"].lower(), r["countryOrRegion"]), []).append(r)
+    for term in dict.fromkeys(t.strip().lower() for t in terms if t.strip()):
+        print(f"\n  {term}")
+        for cc in countries:
+            hits = found.get((term, cc))
+            if not hits:
+                print(f"    {cc}  —  не в топ-500 ни одного жанра (ниже порога выборки)")
+                continue
+            top = max(hits, key=lambda r: r.get("searchPopularity1to100", 0))
+            places = ", ".join(f"{h['genre']}#{h.get('rankInGenre')}"
+                               for h in sorted(hits, key=lambda h: h.get("rankInGenre", 0)))
+            print(f"    {cc}  pop={top.get('searchPopularity1to100'):>3}"
+                  f"  ({top.get('searchPopularity1to5')}/5)  {places}")
+
+
+def _write_rows(rows, path: Path):
+    if path.suffix.lower() == ".csv":
+        import csv
+        cols = ["month", "week", "countryOrRegion", "genre", "searchTerm", "rankInGenre",
+                "searchPopularityInGenre", "searchPopularity1to100", "searchPopularity1to5"]
+        cols = [c for c in cols if any(c in r for r in rows)] or cols
+        with path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+    else:
+        path.write_text(json.dumps(rows, ensure_ascii=False, indent=1))
 
 
 def _cli():
@@ -188,8 +328,14 @@ def _cli():
     ap.add_argument("--seeds", help="Через запятую")
     ap.add_argument("--country", default="DE")
     ap.add_argument("--countries", default="DE,AT,CH")
-    ap.add_argument("--month", help="YYYY-MM")
-    ap.add_argument("--out", help="Путь для JSON-выгрузки")
+    ap.add_argument("--month", help="YYYY-MM; по умолчанию последний опубликованный")
+    ap.add_argument("--week", help="Любая дата недели Вс–Сб, YYYY-MM-DD")
+    ap.add_argument("--genre", help="Через запятую: " + ", ".join(POPULARITY_GENRES))
+    ap.add_argument("--terms", help="Свои ключи через запятую — точная проверка")
+    ap.add_argument("--terms-file", help="Файл с ключами, по одному на строку")
+    ap.add_argument("--contains", help="Все запросы с этой подстрокой")
+    ap.add_argument("--top", type=int, default=50, help="Сколько строк печатать")
+    ap.add_argument("--out", help="Путь для выгрузки: .csv или .json")
     a = ap.parse_args()
     api = PlatformAPI()
 
@@ -211,13 +357,34 @@ def _cli():
         return
 
     if a.popularity:
-        if not a.month:
-            sys.exit("--month обязателен, формат YYYY-MM")
-        ccs = [c.strip().upper() for c in a.countries.split(",")]
-        rows = api.search_term_popularity(a.month, ccs)
-        print(f"строк по {','.join(ccs)}: {len(rows)}")
+        if a.month and a.week:
+            sys.exit("Укажи что-то одно: --month или --week")
+        ccs = [c.strip().upper() for c in a.countries.split(",") if c.strip()]
+        genres = [g.strip().upper() for g in a.genre.split(",")] if a.genre else None
+        terms = [t for t in (a.terms or "").split(",") if t.strip()]
+        if a.terms_file:
+            terms += Path(a.terms_file).read_text().splitlines()
+        period = (f"неделя с {week_start(a.week)}" if a.week
+                  else f"месяц {a.month or last_published_month()}")
+        try:
+            rows = api.search_term_popularity(a.month, a.week, ccs, genres,
+                                              terms or None, a.contains)
+        except ValueError as e:
+            sys.exit(str(e))
+        print(f"{period}, {','.join(ccs)}: строк {len(rows)}")
+        if terms:
+            _print_terms_report(rows, terms, ccs)
+        else:
+            rows.sort(key=lambda r: (-r.get("searchPopularity1to100", 0),
+                                     r["countryOrRegion"], r.get("rankInGenre", 0)))
+            for r in rows[:a.top]:
+                print(f"  {r['countryOrRegion']}  pop={r.get('searchPopularity1to100'):>3}"
+                      f"  ({r.get('searchPopularity1to5')}/5)"
+                      f"  {r['genre']}#{r.get('rankInGenre')}  {r['searchTerm']}")
+            if len(rows) > a.top:
+                print(f"  … ещё {len(rows) - a.top}, полностью — через --out")
         if a.out:
-            Path(a.out).write_text(json.dumps(rows, ensure_ascii=False))
+            _write_rows(rows, Path(a.out))
             print(f"→ {a.out}")
         return
 

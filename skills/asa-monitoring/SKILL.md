@@ -239,11 +239,19 @@ python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
 Там же — официальный топ-500 запросов на жанр на страну:
 
 ```bash
-python3 shared/asa/platform_api.py --popularity --month 2026-08 --countries DE,AT,CH --out pop.json
+# Проверить свои ключи (регистр не важен); без --month — последний опубликованный месяц
+python3 shared/asa/platform_api.py --popularity --countries DE,AT --terms "schrittzähler,kalorienzähler"
+# Топ жанра / запросы со словом / понедельный срез
+python3 shared/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS --out pop.csv
+python3 shared/asa/platform_api.py --popularity --countries US --contains song
+python3 shared/asa/platform_api.py --popularity --week 2026-09-13 --countries DE --genre PHOTO_VIDEO
 ```
 
-Покрытие обрывается на SP≈48-51 — длинный хвост в него не попадает, поэтому
-нишевые ключи там искать бесполезно, только головные и брендовые.
+Не привязан к своему приложению и честно разбит по странам. Покрытие — только
+голова (в DE порог ≈ 49 по `searchPopularity1to100`), поэтому нишевые ключи там
+искать бесполезно: «не в топ-500» значит «ниже порога», а не «ноль». Жанров 15,
+MUSIC/MEDICAL/BOOKS нет — их запросы лежат в ENTERTAINMENT/LIFESTYLE.
+`ASA_ORG_ID` можно не задавать, если у ключа один рекламный аккаунт.
 
 **Способ без cookie (предпочтительный).** Запрос выполняется изнутри залогиненной
 страницы `app-ads.apple.com` — браузер сам подставляет сессию, ничего не истекает
