@@ -51,8 +51,10 @@ iTunes API не возвращает subtitle. Забирать раздельн
 (через `scripts/env_setup.py`). Шаблон — `config/api_keys.env.example` в репозитории: `cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env`.
 
 Нужны для этого скилла: `APPSTORESPY_API_KEY` (весь анализ конкурентов — команды в
-[`knowledge/appstorespy_api.md`](../../knowledge/appstorespy_api.md)), а для Search Popularity — `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
-(живут ~24 часа; `401` от `keyword_popularity.py` = пора обновить cookie из DevTools на app-ads.apple.com).
+[`knowledge/appstorespy_api.md`](../../knowledge/appstorespy_api.md)), а для Search Popularity:
+- частые запросы (шаг 4В1) — Apple Ads API: `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ;
+- хвост (шаг 4В2) — `APPLE_SA_COOKIE`, `APPLE_SA_XSRF`, `APPLE_SA_ADAM_ID` (cookie живёт ~24 часа;
+  `401` от `keyword_popularity.py` = пора обновить cookie из DevTools на app-ads.apple.com).
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
 и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
@@ -183,16 +185,52 @@ results = expand_seeds(seed_terms, "us")
 
 **После сбора hints — просканируй список на иноязычные термины:**
 
-Прочитай все собранные hints и найди термины не на основном языке сторефронта. Если нашлось ≥ 3 таких термина в тире HIGH/MEDIUM — запусти для них ASA popularity (шаг В). Если хотя бы один ≥ 20 → добавить отдельную локаль оправдано.
+Прочитай все собранные hints и найди термины не на основном языке сторефронта. Если нашлось ≥ 3 таких термина в тире HIGH/MEDIUM — проверь их popularity (шаг В). Если хотя бы один найден в В1 или даёт ≥ 20 в В2 → добавить отдельную локаль оправдано.
 
 Типичные сигналы по рынкам:
 - DE storefront → французские термины: франкофоны Швейцарии; арабские/турецкие: мусульмане в Германии
 - GB storefront → арабские/урду: South Asian community
 - US storefront → испанские термины: Hispanic community → es-MX локаль
 
-**Шаг В — проверь Search Popularity через Apple Search Ads**
+**Шаг В — проверь Search Popularity через Apple Ads**
 
-Apple Search Hints дают только *порядок* подсказок, но не реальный объём. Search Ads даёт официальный score 0–100.
+Apple Search Hints дают только *порядок* подсказок, но не реальный объём. У Apple Ads два
+источника popularity — используй оба, в этом порядке:
+
+1. **В1 — Search Term Popularity (официальный API).** Весь universe одной командой, по
+   каждой стране. Своё приложение в нише не нужно. Покрывает только частые запросы.
+2. **В2 — `getRecommendedKeywords` (cookie или браузер).** Для хвоста, который не попал в В1.
+   Работает только при наличии своего приложения из этой ниши в ASA-аккаунте.
+
+#### В1 — Search Term Popularity: сначала весь universe
+
+Нужен Apple Ads API (`ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM, см. `config/api_keys.env.example`).
+Cookie не нужен.
+
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/asa/platform_api.py --popularity \
+  --countries US,GB \
+  --terms-file ./aso-collection/data/keywords/universe_{timestamp}.json \
+  --out ./aso-collection/data/keywords/asa_popularity_official.csv
+```
+
+`--terms-file` читает `universe_*.json` напрямую; `.txt` — по ключу на строку. Без
+`--month` берётся последний опубликованный месяц. Страны — те, под которые собираешь
+метаданные: каждая проверяется отдельно.
+
+Как читать ответ:
+- `pop` = `searchPopularity1to100` — популярность по стране среди всех жанров;
+  `(N/5)` — та же шкала, что в интерфейсе Apple Ads; `GENRE#rank` — место в топ-500 жанра.
+- **Ключ найден** → частый запрос по этой стране. Ориентир: 5/5 и 4/5 — Head, 3/5 — Mid
+  (см. таблицу ниже).
+- **«не в топ-500 ни одного жанра»** → ниже порога выборки (в DE ≈ 49 по 1–100, в малых
+  странах выше). Это не «ноль»: такой ключ — кандидат в long-tail, проверь его в В2 или по hints.
+- Жанров 15, MUSIC/MEDICAL/BOOKS среди них нет — их запросы лежат в ENTERTAINMENT/LIFESTYLE.
+  RU и BY нет вообще.
+- Шкала 1–100 здесь **не откалибрована** со шкалой 0–100 из В2 — не смешивай их в одной
+  сортировке, храни в разных колонках.
+
+#### В2 — getRecommendedKeywords: хвост для своей ниши
 
 | Search Popularity | Tier | Стратегия для нового приложения |
 |---|---|---|
@@ -202,14 +240,16 @@ Apple Search Hints дают только *порядок* подсказок, н
 | 1–9 | Niche | Только добивка char budget |
 | 0 | Zero | Убрать из KF; оставить в description для NLP |
 
-**Предусловие, которое решает всё.** Запрос возвращает данные только для `adamId`
+Шкала таблицы — 0–100 из `getRecommendedKeywords`.
+
+**Предусловие В2.** Запрос возвращает данные только для `adamId`
 **из твоей ASA-организации**, и фильтрует выдачу по тематике этого приложения.
 adamId конкурента отдаёт пустой массив. Значит:
 
-> Если в ASA-аккаунте нет приложения из нужной ниши — **Search Popularity получить неоткуда.**
-> Ни через cookie, ни через браузер, ни через официальный API. Не тратить на это время:
-> сказать пользователю прямо и работать на Apple Search Hints + конкурентности выдачи,
-> а popularity замерить после публикации приложения.
+> Если в ASA-аккаунте нет приложения из нужной ниши — **popularity хвоста получить неоткуда.**
+> Ни через cookie, ни через браузер. Частые запросы при этом всё равно покрывает В1.
+> Для остального — сказать пользователю прямо и работать на Apple Search Hints +
+> конкурентности выдачи, а popularity хвоста замерить после публикации приложения.
 
 Сначала проверь, какие adamId доступны:
 ```bash
@@ -281,12 +321,15 @@ adamId конкурента возвращает пусто — API обслуж
 Следствие: **popularity по нише недоступна, пока в ASA-аккаунте нет приложения из этой ниши.**
 
 ⚠️ RU storefront всегда возвращает popularity=5 — ASA в России не работает.
-⚠️ Официальный Apple Search Ads API v5 popularity **не отдаёт** — эндпоинтов нет, не искать.
+⚠️ Campaign Management API v5 popularity **не отдаёт** — там эндпоинтов нет. Официальная
+popularity есть только в Apple Ads Platform API — это В1.
 
 **Что делать с результатами:**
-1. Отсортируй CSV по popularity DESC
-2. Ключи с popularity=0 — убрать из keyword field (оставь в description)
-3. Расставь title/subtitle/KF по шкале выше
+1. Сведи В1 и В2 в одну таблицу ключей с двумя колонками popularity (шкалы разные)
+2. Ключи из В1 — кандидаты в title/subtitle; из хвоста В2 — в keyword field по шкале выше
+3. Ключи с popularity=0 в В2 и без hints — убрать из keyword field (оставь в description)
+4. Ключ не найден ни в В1, ни в В2 (нет своего приложения в нише) — явно отметь в отчёте,
+   что его объём не измерен, и опирайся на hints
 
 **Шаг Г — проверь позиции по топ-ключам**
 

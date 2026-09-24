@@ -33,48 +33,76 @@ Priority Score = Relevance × Volume × (1/Competition) × Conversion Potential
 | Фактор | Шкала | Источник данных | Вес (типовой) |
 |---|---|---|---|
 | Relevance | 0-100 (AppTweak Atlas AI) / 1-10 (ручная) | Семантический анализ + live SERP | Высокий |
-| Volume (Search Popularity) | 5-100 (Apple) | **Hints/autocomplete API** (см. ниже) | Высокий |
+| Volume (Search Popularity) | 1-100 (Apple) | **Search Term Popularity** для частых запросов, hints + `getRecommendedKeywords` для хвоста (см. ниже) | Высокий |
 | Competition / Difficulty | 1-100 | Top-10 apps authority + installs | Средний |
 | Chance Score | % | Сила своего приложения vs. конкурентов | Средний |
 | Ranking Position | 1-250+ | Tracking tools | Для quick-wins |
 | Conversion Potential | 1-10 | Исторические данные install rate | Средний |
 
-### ⚠️ searchPopularity в ASA API сломан (2026)
+### Search Popularity: три источника Apple и что каждый умеет (проверено 09.2026)
 
-**Проблема:** Метрика `searchPopularity` в Apple Search Ads API (включая Impression Share отчёты) **не передаёт параметр страны** в запросе к бэкенду Apple. В результате все значения возвращаются как глобальные / US-биased, независимо от того, какой storefront запрашивается. Для не-US рынков (DE, AT, CH, GB и др.) данные **недостоверны**.
+Раньше здесь стояло «searchPopularity в ASA API сломан, страну не учитывает». Это верно
+не для всех поверхностей — у Apple их три, и свойства у них разные:
 
-**Симптом:** В impression share отчёте поле `searchPopularity` показывает значение `2` или `3` для практически всех ключей — слишком однородно, чтобы быть корректным country-level сигналом.
+| Источник | Шкала | По стране | Своё приложение в нише | Покрытие |
+|---|---|---|---|---|
+| **Search Term Popularity** (Platform API, `platform_api.py --popularity`) | `searchPopularity1to100`, `…1to5`, `…InGenre`, `rankInGenre` | ✓ честно по стране | **не нужно** | только голова: топ-500 на жанр × страну, ≥ 500 поисков за период |
+| `getRecommendedKeywords` (`keyword_popularity.py`, cookie/браузер) | 0–100 | см. ниже | нужно — adamId из своей ASA-организации | длинный хвост вокруг seed |
+| `searchPopularity` в Impression Share отчёте | 1–5 | не перепроверено | нужна своя кампания | только ключи кампании |
 
-**Два разных инструмента — два разных сигнала:**
+**1. Search Term Popularity — первый источник для частых запросов.** Официальный эндпоинт
+`POST /v1/insights/apps/search-term-popularity/query`. Проверено 09.2026: значения по
+странам разные (`schrittzähler` — DE 64, AT 52; `kalorienzähler` — AT 69, в DE-топ не
+попал), фильтр по списку ключей работает, регистр не важен.
 
-**1. Apple Search Hints / autocomplete (`keyword_suggest.py`)** — гео-точный, без авторизации:
 ```bash
-# Реальное автодополнение App Store в конкретном сторфронте
-python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
-  --term "lebensmit" --country de
+python3 shared/asa/platform_api.py --popularity --countries DE,AT \
+  --terms-file ./aso-collection/data/keywords/universe_{timestamp}.json \
+  --out ./aso-collection/data/keywords/asa_popularity_official.csv
 ```
-Показывает что реально набирают пользователи в данной стране. Tier (HIGH/MEDIUM/LOW) = относительная частота в данном сторфронте. **Это основной гео-сигнал.**
 
-**2. ASA Popularity (`keyword_popularity.py`, `/cm/api/v2/keywords/recommendation`)** — требует куки:
+Ограничения:
+- **Только голова.** В DE нижняя граница выборки ≈ 49 по `searchPopularity1to100`, в малых
+  странах выше. Ключа нет в ответе → он ниже порога, а не «ноль».
+- **15 жанров:** BUSINESS, EDUCATION, ENTERTAINMENT, FINANCE, FOOD_DRINK, GAMES,
+  HEALTH_FITNESS, LIFESTYLE, NEW_PUBLICATION, PHOTO_VIDEO, PRODUCTIVITY_UTILITIES, SHOPPING,
+  SOCIAL_NETWORKING, SPORTS, TRAVEL. Музыкальные, медицинские и т.п. запросы лежат в
+  ENTERTAINMENT/LIFESTYLE. Один запрос может стоять в нескольких жанрах.
+- Нет RU и BY. Месяцы хранятся 15 месяцев (обновление 5-го числа), недели — 65 недель.
+- `searchPopularity1to5` — та же цифра, что в интерфейсе Apple Ads.
+- Нужен Apple Ads API (`ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM), cookie не нужен.
+
+**2. `getRecommendedKeywords` — для длинного хвоста.** Отдаёт данные только для adamId
+из своей ASA-организации и в тематике этого приложения; adamId конкурента — пустой массив
+с HTTP 200. Параметр `storefronts` осмысленно меняет US-значения; глобальный ли score для
+других стран — не проверено, поэтому для non-US используй его как вспомогательный сигнал:
 ```bash
 python3 keyword_popularity.py --seeds "lebensmittel scanner,halal check" --storefronts DE,AT,CH
 ```
-⚠️ **Несмотря на параметр `--storefronts`, popularity score (0–100) является глобальной метрикой** — Apple считает объём по всем рынкам вместе. Следствия:
-- Score 5 в DE не означает "нет объёма в Германии" — может быть нишевый немецкий термин с хорошим локальным спросом
-- Score 30 не гарантирует объём в DE — весь объём может быть сосредоточен в US
-- Использовать как дополнительный фильтр, но не как единственный критерий
+
+**3. `searchPopularity` в Impression Share отчёте** — шкала 1–5. Наблюдение 2026-04:
+у почти всех ключей DE/AT/CH значение 2–3. Это может быть и потеря страны, и просто грубая
+шкала — не перепроверено. Для объёма бери источник 1, IS-отчёт — для доли показов.
+
+**Apple Search Hints / autocomplete (`keyword_suggest.py`)** — гео-точный порядок подсказок
+без авторизации, но не объём:
+```bash
+python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
+  --term "lebensmit" --country de
+```
 
 **Сравнительная таблица инструментов:**
 
 | Инструмент | Гео-точность | Абсолютный объём | Авторизация |
 |---|---|---|---|
+| Search Term Popularity (`platform_api.py`) | ✓ По стране | ✓ Относительный (1–100), только голова | Apple Ads API |
 | Apple Search Hints (`keyword_suggest.py`) | ✓ Высокая (по сторфронту) | ✗ Нет (только порядок) | Не нужна |
-| ASA Popularity (`keyword_popularity.py`) | ⚠️ Глобальная (не гео) | ✓ Относительный (0–100) | Cookie ~24ч |
+| ASA Popularity (`keyword_popularity.py`) | ⚠️ Для non-US не проверено | ✓ Относительный (0–100) | Cookie ~24ч + своё приложение в нише |
 | Реальные impressions в кампании | ✓ Точная (по кампейн-гео) | ✓ Абсолютный | ASA кампания |
 
 **Практическое правило:** Если ключ не появляется в App Store autocomplete при вводе первых 3-4 символов в нужном сторфронте — его органический объём < 5-10 запросов в день. ASA может показывать по нему impressions (paid inventory), но органический трафик будет нулевым.
 
-**Единственный достоверный сигнал объёма для конкретного гео** — реальные impressions после запуска ключа в ASA кампании с правильным бидом.
+**Самый точный сигнал объёма для конкретного гео** — реальные impressions после запуска ключа в ASA кампании с правильным бидом. До кампании: голова — Search Term Popularity, хвост — hints + `getRecommendedKeywords`.
 
 ### Keyword Difficulty — Компонентная модель
 
@@ -132,14 +160,15 @@ SEMANTIC THEME (уровень темы)
 
 | Источник | Качество сигнала | Описание |
 |---|---|---|
-| **Apple Search Hints (autocomplete)** | **Критический** | **Основной источник реального объёма по стране.** Hints = реальные запросы пользователей в конкретном сторфронте. Если ключ есть в hints → есть органический спрос. |
+| **Apple Search Term Popularity (Platform API)** | **Критический** | Официальная popularity по стране и жанру для частых запросов (топ-500 на жанр). Не требует своего приложения в нише. Нет ключа в ответе = ниже порога выборки |
+| **Apple Search Hints (autocomplete)** | **Критический** | **Основной гео-сигнал для хвоста.** Hints = реальные запросы пользователей в конкретном сторфронте. Если ключ есть в hints → есть органический спрос. |
 | Apple Search Ads suggestions | Высокий | Данные самого Apple из ASA UI; более надёжны чем API searchPopularity |
 | Competitor metadata (title/subtitle/keyword field) | Высокий | Что индексируют лидеры |
 | Competitor paid keywords (ASA) | Высокий | За что конкуренты платят = высокий коммерческий intent |
 | ASA Impression Share (search terms) | Высокий | Показывает реальные запросы, по которым мы показываемся + наш share; кандидаты для EXACT таргетинга |
 | Already-ranked keywords (own app) | Средний | Quick-win: поднять позицию без смены метаданных |
 | User reviews mining | Средний | Непромпченный язык пользователей → natural search terms |
-| ASA searchPopularity API | ⚠️ Ограничен | Отдаёт данные **только для adamId из твоей ASA-организации** и только в тематике этого приложения; adamId конкурента возвращает пустой массив с HTTP 200 (проверено 09.2026). Нет своего приложения в нише → объём получить неоткуда. Утверждение «не передаёт параметр страны» **не подтверждено**: запрос со `storefronts:['US']` возвращает осмысленные US-значения. |
+| ASA `getRecommendedKeywords` (cookie/браузер) | ⚠️ Ограничен | Отдаёт данные **только для adamId из твоей ASA-организации** и только в тематике этого приложения; adamId конкурента возвращает пустой массив с HTTP 200 (проверено 09.2026). Нет своего приложения в нише → объём хвоста получить неоткуда. Утверждение «не передаёт параметр страны» **не подтверждено**: запрос со `storefronts:['US']` возвращает осмысленные US-значения. Для частых запросов без своего приложения — Search Term Popularity. |
 | Brainstorm (features/benefits/problems) | Низкий | Стартовая точка, всегда верифицировать через hints |
 
 ### Empirical Data — 7,500 App Store приложений (ConsultMyApp, Nov 2025) [5]
@@ -196,7 +225,8 @@ graph TD
 
 ## Open Questions & Gaps
 
-- **searchPopularity API сломан**: не передаёт страну → возвращает глобальные данные для всех рынков. Использовать только hints/autocomplete для оценки объёма по конкретному сторфронту (подтверждено на практике, 2026-04)
+- **Popularity длинного хвоста по стране**: официальный Search Term Popularity покрывает только голову (≈ 49+ по 1–100 в DE); для хвоста по non-US остаются hints и `getRecommendedKeywords`, чья гео-точность не проверена. Поле `searchPopularity` (1–5) в IS-отчёте в 2026-04 выглядело однородным для DE/AT/CH — причина не выяснена
+- **Шкалы не откалиброваны между собой**: `searchPopularity1to100` официального эндпоинта и 0–100 из `getRecommendedKeywords` не сверены на общих ключах — не смешивать в одной сортировке
 - **Search Popularity scale нелинейна**: Apple не публикует mapping score → volume. Score 70 vs 80 — разница неизвестна
 - **Порядок слов в keyword field**: Industry consensus — не важен; Apple не подтвердил официально
 - **Глубина semantic matching**: подтверждены plurals/singulars; multi-hop synonyms ("blood pressure" → "BP tracker") — threshold неизвестен
@@ -230,3 +260,4 @@ graph TD
 ---
 
 _Update log: 2026-03-06 — initial version, sources: AppTweak (2025-2026), MobileAction (2026), Phiture (2025), ConsultMyApp (Nov 2025), AppSamurai (Mar 2025)_
+_Update log: 2026-09-24 — раздел Search Popularity переписан: три источника Apple с проверенными свойствами; официальный Search Term Popularity (Platform API) учитывает страну — прежнее «searchPopularity сломан» к нему не относится. Источник: Apple Ads Platform API docs + живые запросы 09.2026_

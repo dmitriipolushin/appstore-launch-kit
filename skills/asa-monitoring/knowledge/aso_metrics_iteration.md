@@ -313,7 +313,7 @@ Popularity score — **глобальная метрика**, не привяз�
 
 **searchPopularity в Impression Share CSV**
 
-Поле `searchPopularity` в impression share CSV **не передаёт параметр страны** в запросе к бэкенду Apple. Возвращает глобальные данные независимо от conditions. Для non-US рынков (DE, AT, CH) — не использовать. Источник: наблюдение на практике (2026-04).
+Поле `searchPopularity` (шкала 1–5) в impression share CSV в 2026-04 давало одинаковые `2–3` почти у всех ключей DE/AT/CH — выглядело так, будто страна не учитывается. Причина не перепроверена: это может быть и грубая шкала. Для объёма по стране это поле не использовать — бери официальный Search Term Popularity (`shared/asa/platform_api.py --popularity --terms …`), где страна учитывается честно (проверено 09.2026), а IS-отчёт — только для доли показов.
 
 **Apple Search Hints (autocomplete, `keyword_suggest.py`)**
 

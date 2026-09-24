@@ -36,7 +36,7 @@
 | «Проверь позиции», «найди новые ключи», «что изменилось после обновления метаданных» | [`skills/aso-monitoring/SKILL.md`](skills/aso-monitoring/SKILL.md) |
 | «Запусти рекламу в Apple Ads / ASA», «создай кампанию», «добавь кластер ключей в рекламу» | [`skills/asa-launch/SKILL.md`](skills/asa-launch/SKILL.md) |
 | «Проверь ASA-кампании», «подними/снизь ставки», «почему растёт CPA», «какие ключи паузить» | [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) |
-| «Какая популярность у ключей», «какие запросы самые частые в жанре/стране» | `python3 shared/asa/platform_api.py --popularity --terms …` — официальная Search Popularity Apple Ads, см. [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) раздел «Расширение ключей» |
+| «Какая популярность у ключей», «какие запросы самые частые в жанре/стране» | `python3 shared/asa/platform_api.py --popularity --terms …` — официальная Search Popularity Apple Ads по стране, без своего приложения в нише. Как читать ответ — [`skills/aso-collection/SKILL.md`](skills/aso-collection/SKILL.md), шаг 4В1 |
 | «Мы готовы публиковаться, что делать» | Полный маршрут ниже ↓ |
 
 ---
@@ -228,7 +228,7 @@ python3 shared/appstorespy_cli.py similar --help  # аргументы конк�
 |---|---|---|
 | Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
 | **Apple Ads API:** `asa-launch`, `asa-monitoring`, официальная Search Popularity (`platform_api.py`) | `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ в `~/.config/aso-tools/keys/` | Apple Ads → Account Settings → API. `ASA_ORG_ID` можно не задавать для `platform_api.py`, если аккаунт у ключа один |
-| Search Popularity длинного хвоста (cookie-способ) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` + `APPLE_SA_ADAM_ID` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В |
+| Search Popularity длинного хвоста (cookie-способ) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` + `APPLE_SA_ADAM_ID` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В2 |
 | Заливка метаданных в App Store Connect, метрики ASC (organic vs paid) | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
 | Триалы по кампаниям в `asa-monitoring` | MCP-сервер Amplitude | подключается в агенте, отдельного ключа в файле нет |
 

@@ -27,7 +27,7 @@ CLI:
     # Проверить свой список ключей: какие в топ-500 жанра и с какой popularity
     python3 shared/asa/platform_api.py --popularity --countries DE,AT \
         --terms "schrittzähler,pilates zu hause,kalorienzähler"
-    python3 shared/asa/platform_api.py --popularity --countries DE --terms-file keys.txt
+    python3 shared/asa/platform_api.py --popularity --countries DE --terms-file universe_*.json
 
     # Топ жанра / все частые запросы со словом / понедельный срез
     python3 shared/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS
@@ -284,6 +284,15 @@ class PlatformAPI:
         return rows
 
 
+def _read_terms_file(path: Path):
+    """Ключи из .txt (по одному на строку) или .json — список строк либо
+    объектов с полем "term" (формат universe_*.json из aso-collection)."""
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [x["term"] if isinstance(x, dict) else str(x) for x in data]
+    return path.read_text(encoding="utf-8").splitlines()
+
+
 def _print_terms_report(rows, terms, countries):
     """По каждому ключу и стране: popularity и места в жанрах, либо «ниже порога»."""
     found = {}
@@ -332,7 +341,7 @@ def _cli():
     ap.add_argument("--week", help="Любая дата недели Вс–Сб, YYYY-MM-DD")
     ap.add_argument("--genre", help="Через запятую: " + ", ".join(POPULARITY_GENRES))
     ap.add_argument("--terms", help="Свои ключи через запятую — точная проверка")
-    ap.add_argument("--terms-file", help="Файл с ключами, по одному на строку")
+    ap.add_argument("--terms-file", help=".txt — ключ на строку; .json — universe_*.json из aso-collection")
     ap.add_argument("--contains", help="Все запросы с этой подстрокой")
     ap.add_argument("--top", type=int, default=50, help="Сколько строк печатать")
     ap.add_argument("--out", help="Путь для выгрузки: .csv или .json")
@@ -363,7 +372,7 @@ def _cli():
         genres = [g.strip().upper() for g in a.genre.split(",")] if a.genre else None
         terms = [t for t in (a.terms or "").split(",") if t.strip()]
         if a.terms_file:
-            terms += Path(a.terms_file).read_text().splitlines()
+            terms += _read_terms_file(Path(a.terms_file))
         period = (f"неделя с {week_start(a.week)}" if a.week
                   else f"месяц {a.month or last_published_month()}")
         try:
