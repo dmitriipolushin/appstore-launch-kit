@@ -48,14 +48,14 @@ iTunes API не возвращает subtitle. Забирать раздельн
 ## Первоначальная настройка (один раз)
 
 Все API-ключи хранятся в `~/.config/aso-tools/api_keys.env` — скрипты загружают их оттуда сами
-(через `scripts/env_setup.py`). Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
+(через `scripts/env_setup.py`). Шаблон — `config/api_keys.env.example` в репозитории: `cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env`.
 
 Нужны для этого скилла: `APPSTORESPY_API_KEY` (весь анализ конкурентов — команды в
 [`knowledge/appstorespy_api.md`](../../knowledge/appstorespy_api.md)), а для Search Popularity — `APPLE_SA_COOKIE` и `APPLE_SA_XSRF`
 (живут ~24 часа; `401` от `keyword_popularity.py` = пора обновить cookie из DevTools на app-ads.apple.com).
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
-и куда её взять (описано в `growth/api_keys.env.example` в репозитории скиллов).
+и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
 
 ## Структура данных
 
@@ -596,6 +596,14 @@ for locale, f in locales.items():
 ```
 
 **Не публиковать без подтверждения пользователя.**
+
+## Что дальше: реклама в Apple Ads
+
+Собранное ядро ключей — готовый старт для Apple Search Ads. После публикации приложения
+запусти кампанию по скиллу [`asa-launch`](../asa-launch/SKILL.md): ключи из
+`data/keywords/` делятся на тематические кластеры, а organic baseline снимается **до**
+старта рекламы. Дальше кампании ведёт [`asa-monitoring`](../asa-monitoring/SKILL.md),
+а search terms из них возвращаются в метаданные через [`aso-monitoring`](../aso-monitoring/SKILL.md).
 
 ## Правила анализа
 

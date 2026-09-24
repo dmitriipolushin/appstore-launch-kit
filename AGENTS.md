@@ -6,7 +6,12 @@
 
 ## Что это за репозиторий
 
-Набор инструментов для заполнения данных приложения в App Store: метаданные (title / subtitle / keyword field / description), скриншоты и прохождение модерации.
+Набор инструментов для запуска и роста приложения в App Store в двух направлениях:
+
+- **ASO (органика):** метаданные (title / subtitle / keyword field / description), скриншоты, прохождение модерации, регулярный мониторинг позиций.
+- **Apple Ads / Apple Search Ads (ASA, реклама в поиске App Store):** запуск кампаний через API, оптимизация ставок и ключей, сверка paid vs organic.
+
+Если пользователь говорит «ASA», «Search Ads», «Apple Ads», «реклама в App Store», «кампания», «ставки», «CPA/CPT» — это второе направление, а не ASO.
 
 Это **не библиотека для импорта и не приложение для запуска.** Это набор инструкций, скриптов и справочных данных. Ты — исполнитель, репозиторий — твоя методология.
 
@@ -28,6 +33,10 @@
 | «Помоги пройти модерацию», «получил reject», «что писать в Notes» | [`docs/app-store-review-guide.md`](docs/app-store-review-guide.md) |
 | «Посчитай ASO-скор», «спланируй A/B тест», «проанализируй отзывы» | [`skills/app-store-optimization/`](skills/app-store-optimization/) — набор автономных Python-скриптов |
 | «Проанализируй конкурента», «найди похожие приложения», «сколько он зарабатывает», «оцени нишу», «позиции в чартах» | [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) — инструменты анализа чужих приложений через `shared/appstorespy_cli.py` |
+| «Проверь позиции», «найди новые ключи», «что изменилось после обновления метаданных» | [`skills/aso-monitoring/SKILL.md`](skills/aso-monitoring/SKILL.md) |
+| «Запусти рекламу в Apple Ads / ASA», «создай кампанию», «добавь кластер ключей в рекламу» | [`skills/asa-launch/SKILL.md`](skills/asa-launch/SKILL.md) |
+| «Проверь ASA-кампании», «подними/снизь ставки», «почему растёт CPA», «какие ключи паузить» | [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) |
+| «Какая популярность у ключей», «какие запросы самые частые в жанре/стране» | `python3 shared/asa/platform_api.py --popularity --terms …` — официальная Search Popularity Apple Ads, см. [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) раздел «Расширение ключей» |
 | «Мы готовы публиковаться, что делать» | Полный маршрут ниже ↓ |
 
 ---
@@ -54,7 +63,18 @@
                 ↓
 6. Подготовка к модерации    → docs/app-store-review-guide.md
    (Notes, пейвол, permissions, сводный чеклист перед отправкой)
+                ↓
+   ── приложение опубликовано ──
+                ↓
+7. Запуск рекламы Apple Ads  → skills/asa-launch/SKILL.md
+   (ключи из шага 1 → тематические кампании, organic baseline ДО старта)
+                ↓
+8. Регулярная работа:
+   • asa-monitoring — ежедневно / раз в неделю: ставки, паузы, расширение ядра
+   • aso-monitoring — раз в 2–4 недели: позиции, новые ключи, правки метаданных
 ```
+
+**ASO и ASA связаны:** ключи из ASO-исследования — стартовое ядро кампании; search terms из кампании показывают, какие запросы реально дают установки, и возвращаются в метаданные через aso-monitoring. Organic baseline (шаг 7) снимается до запуска рекламы — без него потом не отличить рост органики от каннибализации.
 
 **Почему именно такой порядок:** ключевые слова нужны и для description, и для текста на скриншотах (с июня 2025 Apple индексирует подписи на скриншотах). Если сделать скриншоты до keyword research — придётся переделывать.
 
@@ -78,9 +98,11 @@
 
 Метаданные, description, скриншоты, PATCH-запросы в App Store Connect — **всё показываешь пользователю и ждёшь явного «да».** Заливка метаданных меняет живую страницу приложения в сторе.
 
+То же для Apple Ads: создание и включение кампаний, adgroup-ов и ключей, изменение ставок и бюджетов, паузы — **только после явного «да» на конкретный план** (ключи, ставки, бюджет, страны). Любое такое действие сразу тратит деньги пользователя. Анализ и сбор данных подтверждения не требуют.
+
 ### 4. Не выдумывай данные
 
-- Search Popularity берётся **только** из Apple Search Ads (`skills/aso-collection/scripts/asa/keyword_popularity.py`). Нельзя оценить объём запроса на глаз.
+- Search Popularity берётся **только** из Apple Ads: официальный эндпоинт `shared/asa/platform_api.py --popularity --terms …` (частые запросы, по стране) или `skills/aso-collection/scripts/asa/keyword_popularity.py` (длинный хвост, нужен cookie и своё приложение в нише). Нельзя оценить объём запроса на глаз.
 - Apple Search Hints дают порядок подсказок, но **не объём** — термин с Hints 10000 может иметь ASA Popularity 5. Всегда верифицируй.
 - Subtitle конкурентов **не возвращается** iTunes Lookup API. Только через AppStoreSpy:
   `python3 shared/appstorespy_cli.py subtitle <app_id> --country DE --language de_DE`, отдельно по каждой локали.
@@ -120,8 +142,17 @@
 │   │   ├── SKILL.md                копирайтинг, экспортные размеры
 │   │   └── mockup.png            ← промеренный макет iPhone (копировать в public/)
 │   ├── asc-metadata/             ← заливка метаданных через App Store Connect API
-│   └── app-store-optimization/   ← автономные Python-скрипты: ASO-скор, A/B-планер,
-│                                   анализ отзывов, чеклист запуска
+│   ├── aso-monitoring/           ← регулярный ASO-мониторинг: позиции, новые ключи,
+│   │                               сверка с ASA, A/B-тесты скриншотов
+│   ├── app-store-optimization/   ← автономные Python-скрипты: ASO-скор, A/B-планер,
+│   │                               анализ отзывов, чеклист запуска
+│   │
+│   │   ── Apple Ads (ASA) ──
+│   ├── asa-launch/               ← запуск кампании через API: кластеры, ставки,
+│   │                               негативы, organic baseline
+│   └── asa-monitoring/           ← оптимизация кампаний: метрики, триалы, IS,
+│       └── knowledge/              decision_gates.md — обязательные проверки
+│                                   перед любым изменением ставок/пауз
 ├── examples/
 │   └── screenshots-generator/    ← РАБОЧИЙ пример по app-store-screenshots:
 │                                   Next.js, 4 локали, экспорт в PNG. Читай его код,
@@ -129,12 +160,15 @@
 ├── shared/
 │   ├── appstorespy.py            ← клиент AppStoreSpy: все iOS-эндпоинты
 │   ├── appstorespy_cli.py        ← CLI к нему — анализ чужих приложений в сторе
-│   └── ...                       ← общие скрипты скиллов (ASA, профили, ключи)
+│   ├── asa/                      ← ASA-тулкит обоих ASA-скиллов: platform_api.py
+│   │                               (Apple Ads Platform API, Search Popularity),
+│   │                               bids.py, adgroups.py, utils/asa_api.py (API v5)
+│   └── ...                       ← общие скрипты скиллов (профили, ключи)
 ├── knowledge/
 │   ├── appstorespy_api.md        ← справочник «задача → команда» по AppStoreSpy
-│   └── ...                       ← 8 файлов теории ASO
+│   └── ...                       ← 8 файлов теории ASO и связки ASO + ASA
 └── config/
-    └── api_keys.env.example      ← шаблон для ключей aso-collection
+    └── api_keys.env.example      ← шаблон для всех ключей (ASO, ASA, ASC)
 ```
 
 ### Приоритет источников при конфликте
@@ -188,17 +222,21 @@ python3 shared/appstorespy_cli.py similar --help  # аргументы конк�
 
 ## Ключи и внешние сервисы
 
-`skills/aso-collection/` — единственная часть, которой нужны внешние ключи. Всё остальное работает без них.
+Ключи нужны `aso-collection` (частично), `aso-monitoring` (частично), `asc-metadata` и обоим ASA-скиллам. `app-store-screenshots`, `app-store-optimization` и вся методология работают без них.
 
 | Нужен для | Ключ | Где взять |
 |---|---|---|
 | Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
-| Search Popularity ключевых слов (0–100) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В |
-| Заливка метаданных в App Store Connect | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
+| **Apple Ads API:** `asa-launch`, `asa-monitoring`, официальная Search Popularity (`platform_api.py`) | `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ в `~/.config/aso-tools/keys/` | Apple Ads → Account Settings → API. `ASA_ORG_ID` можно не задавать для `platform_api.py`, если аккаунт у ключа один |
+| Search Popularity длинного хвоста (cookie-способ) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` + `APPLE_SA_ADAM_ID` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В |
+| Заливка метаданных в App Store Connect, метрики ASC (organic vs paid) | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
+| Триалы по кампаниям в `asa-monitoring` | MCP-сервер Amplitude | подключается в агенте, отдельного ключа в файле нет |
 
 Установка: скопируй `config/api_keys.env.example` в `~/.config/aso-tools/api_keys.env` и заполни.
 
 **Что работает вообще без ключей:** iTunes Lookup API (профили, рейтинги, description конкурентов), Apple Search Hints (`keyword_suggest.py`), позиции в поиске (`search_positions.py`), отзывы (`fetch_reviews.py`), все скрипты в `app-store-optimization/`, вся методология и knowledge-база.
+
+Без Apple Ads API ASA-скиллы не работают вообще: кампании создаются, читаются и меняются только через него. Не пытайся заменить API инструкциями «нажми в интерфейсе» без явной просьбы пользователя.
 
 Если ключей нет — работай по методологии на данных без ключей и **явно скажи пользователю, какая часть анализа осталась непокрытой.** Не выдавай неполный анализ за полный.
 
@@ -221,16 +259,17 @@ python3 ./skills/aso-collection/scripts/collect_profiles.py --project ./aso-coll
 Установить как обычные скиллы (тогда пути в SKILL.md станут верными):
 
 ```bash
-for s in aso-collection app-store-optimization app-store-screenshots asc-metadata; do
-  ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
-done
+./install.sh           # все семь скиллов (ASO + ASA), симлинками
+./install.sh --check   # что установлено сейчас
 ```
 
-Зависимости Python-скриптов `aso-collection`:
+Зависимости Python-скриптов:
 
 ```bash
-pip install requests python-dotenv PyJWT cryptography
+pip install requests python-dotenv PyJWT cryptography authlib pycryptodomex
 ```
+
+`authlib` и `pycryptodomex` нужны только ASA-скриптам (Apple Ads API).
 
 ---
 
@@ -269,4 +308,7 @@ pip install requests python-dotenv PyJWT cryptography
 - [ ] В description есть ссылки на Terms of Use и Privacy Policy
 - [ ] Скриншоты собраны из реальных экранов приложения
 - [ ] Ничего не залито в App Store Connect без подтверждения пользователя
+- [ ] **ASA:** ни одна кампания, ставка, бюджет или пауза не изменены без явного «да» на конкретный план
+- [ ] **ASA:** перед рекомендацией по ставкам/паузам пройдены gate-проверки из `decision_gates.md`, изменения записаны в `asa_changelog.md`
+- [ ] **ASA:** organic baseline снят до запуска новой кампании
 - [ ] Явно перечислено, что осталось непокрытым и почему

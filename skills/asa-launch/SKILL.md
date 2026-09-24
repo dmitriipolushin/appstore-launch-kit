@@ -21,13 +21,13 @@ description: Создаёт и запускает новую кампанию Ap
 ## Первоначальная настройка (один раз)
 
 Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читают их сами (`scripts/env_setup.py`).
-Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
+Шаблон — `config/api_keys.env.example` в репозитории: `cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env`.
 
 Нужны: `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` (Apple Search Ads → Account Settings → API)
 и PEM-пара `apple_ads_private_key.pem` / `apple_ads_public_key.pem` в `~/.config/aso-tools/keys/`.
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
-и куда её взять (описано в `growth/api_keys.env.example` в репозитории скиллов).
+и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
 
 ## Структура данных
 
@@ -224,6 +224,7 @@ print(f"Keywords: {len(kws)}")
 
 ## Правила запуска
 
+- **Ничего не создавать в API без явного «да».** Сначала показать пользователю план целиком: кампании и кластеры, ключи, стартовые ставки, дневной бюджет, страны, негативы. Кампания начинает тратить деньги сразу после создания
 - Не запускать BROAD на старте — даёт нерелевантный трафик без истории
 - `automatedKeywordsOptIn=False` **всегда** — Search Match не используем ни на какой ставке
 - Одна adgroup на кампанию — второй группы, конкурирующей за тот же запрос, быть не должно

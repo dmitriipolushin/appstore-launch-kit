@@ -11,7 +11,7 @@ import requests
 class SearchAdsAPI:
 
     def create():
-        """Собирает клиент из ~/.config/aso-tools/api_keys.env (см. growth/api_keys.env.example)."""
+        """Собирает клиент из ~/.config/aso-tools/api_keys.env (см. config/api_keys.env.example)."""
         import os
         from pathlib import Path as _Path
         keys_dir = os.environ.get("ASA_KEYS_DIR", str(_Path.home() / ".config" / "aso-tools" / "keys"))
@@ -22,7 +22,7 @@ class SearchAdsAPI:
         if missing:
             raise RuntimeError(
                 "Не заданы переменные Apple Search Ads: " + ", ".join(missing) + ".\n"
-                "Заполни ~/.config/aso-tools/api_keys.env по образцу growth/api_keys.env.example.\n"
+                "Заполни ~/.config/aso-tools/api_keys.env по образцу config/api_keys.env.example.\n"
                 "Значения: Apple Search Ads -> Account Settings -> API."
             )
         client_id = os.environ["ASA_CLIENT_ID"]

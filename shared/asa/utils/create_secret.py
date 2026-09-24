@@ -5,7 +5,7 @@ from authlib.jose import jwt
 from Cryptodome.PublicKey import ECC
 # crypto.PublicKey.ECC
 
-# Значения берутся из ~/.config/aso-tools/api_keys.env (см. growth/api_keys.env.example).
+# Значения берутся из ~/.config/aso-tools/api_keys.env (см. config/api_keys.env.example).
 private_key_file = os.environ.get("ASA_PRIVATE_KEY_FILE", "keys/asa-private-key.pem")
 public_key_file = os.environ.get("ASA_PUBLIC_KEY_FILE", "keys/asa-public-key.pem")
 client_id = os.environ["ASA_CLIENT_ID"]

@@ -18,13 +18,13 @@ description: Регулярный ASO-мониторинг (раз в 2-4 нед
 ## Первоначальная настройка (один раз)
 
 Ключи — в `~/.config/aso-tools/api_keys.env`, скрипты читают их сами (`scripts/env_setup.py`).
-Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
+Шаблон — `config/api_keys.env.example` в репозитории: `cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env`.
 
 Нужны: `APPSTORESPY_API_KEY`; `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` для Search Popularity (живут ~24 часа);
 `ASC_KEY_ID` + `ASC_ISSUER_ID` + `.p8` в `~/.config/aso-tools/keys/` для метрик App Store Connect.
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
-и куда её взять (описано в `growth/api_keys.env.example` в репозитории скиллов).
+и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
 
 ## Структура данных
 

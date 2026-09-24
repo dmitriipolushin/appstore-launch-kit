@@ -18,14 +18,14 @@ description: Мониторинг работающих Apple Search Ads камп
 ## Первоначальная настройка (один раз)
 
 Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читают их сами (`scripts/env_setup.py`).
-Файл создаёт `growth/install.sh` из шаблона `growth/api_keys.env.example`.
+Шаблон — `config/api_keys.env.example` в репозитории: `cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env`.
 
 Нужны: `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-пара в `~/.config/aso-tools/keys/`;
 `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` для `keyword_popularity.py` (живут ~24 часа).
 Amplitude подключается как MCP-сервер, отдельного ключа в этом файле не требует.
 
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
-и куда её взять (описано в `growth/api_keys.env.example` в репозитории скиллов).
+и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
 
 ## Структура данных
 
