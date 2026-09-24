@@ -129,7 +129,7 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_analyze.py \
   [--fetch-date {today}]
 ```
 
-Скрипт выводит таблицу метрик: impr, inst, spend, trials, IR%, CPI, CPTrial, IPM, IS%.
+Скрипт выводит таблицу по кампаниям (impr, inst, spend, trials, IR%, CPI, CPTrial, IPM), а под ней — разрез по ключам внутри каждой кампании (bid, impr, taps, inst, spend, CPI, TTR%, IPM, IS%). IS% есть только у ключей: у кампании нет одного ключа, к которому его можно привязать.
 **Никаких рекомендаций — только данные.**
 
 **Если вывод неверный — чини скрипт, не анализируй вручную.**

@@ -93,7 +93,7 @@ recent = asa[asa['fetch_date'] >= '{last_check_date}']
 
 Поля `asa_metrics.csv`: `fetch_date, period_start, period_end, campaign_id, campaign_name, country, keyword, bid, impressions, taps, installs, spend, ttr, cr, avg_cpt, avg_cpa, ipm`
 
-Поля `asa_searchterms.csv`: `searchTerm, keyword, impressions, taps, installs, ttr(%), cr(%), avgCPA, spend`
+Поля `asa_searchterms.csv`: `fetch_date, period_start, period_end, campaign_id, campaign_name, country, search_term, keyword, match_type, impressions, taps, installs, spend, ttr, cr, avg_cpt, avg_cpa`
 
 Построй сводную таблицу **по каждому ключу** (только с impressions > 0):
 

@@ -242,11 +242,14 @@ def load_csv(csv_path, fields):
         return list(csv.DictReader(f))
 
 
-def upsert_rows(csv_path, fields, new_rows, period_key):
+def upsert_rows(csv_path, fields, new_rows, period_key, campaign_id=None):
     """Replace all rows matching period_key with new_rows (upsert semantics).
 
     period_key: dict with fetch_date, period_start, period_end.
-    Rows NOT matching period_key are preserved unchanged.
+    campaign_id: when set, only that campaign's rows for the period are replaced.
+        Required in single-campaign mode — without it an ad-hoc fetch of one
+        campaign wipes every other campaign's rows for the same period.
+    Rows NOT matching are preserved unchanged.
     Running this multiple times with identical inputs produces identical output.
     """
     existing = load_csv(csv_path, fields)
@@ -256,6 +259,7 @@ def upsert_rows(csv_path, fields, new_rows, period_key):
             r.get("fetch_date") == period_key["fetch_date"]
             and r.get("period_start") == period_key["period_start"]
             and r.get("period_end") == period_key["period_end"]
+            and (campaign_id is None or str(r.get("campaign_id")) == str(campaign_id))
         )
     ]
     final = kept + new_rows
@@ -322,7 +326,8 @@ def main():
                 "avg_cpa": round(kw.get("avgCPA", 0), 4),
                 "ipm": round(inst / impr * 1000, 1) if impr else 0,
             })
-        upsert_rows(metrics_path, METRICS_FIELDS, rows, period_key)
+        upsert_rows(metrics_path, METRICS_FIELDS, rows, period_key,
+                    campaign_id=args.campaign_id)
         print(f"✓ {len(rows)} keyword rows for campaign {args.campaign_id}")
         return
 
@@ -422,7 +427,22 @@ def main():
         if args.searchterms:
             st_rows = []
             for cid, cname in st_campaign_ids:
-                st_rows.extend(fetch_searchterms(api, int(cid), start_date, end_date))
+                country = (config_lookup.get(cid, {}).get("country")
+                           or api_meta.get(cid, {}).get("country") or infer_country(cname))
+                for st in fetch_searchterms(api, int(cid), start_date, end_date):
+                    st_rows.append({
+                        "fetch_date": fetch_date, "period_start": start_date,
+                        "period_end": end_date,
+                        "campaign_id": cid, "campaign_name": cname, "country": country,
+                        "search_term": st.get("searchTerm", ""),
+                        "keyword": st.get("keyword", ""),
+                        "match_type": st.get("matchType", ""),
+                        "impressions": st.get("impressions", 0),
+                        "taps": st.get("taps", 0),
+                        "installs": st.get("installs", 0), "spend": st.get("spend", 0),
+                        "ttr": st.get("ttr", 0), "cr": st.get("cr", 0),
+                        "avg_cpt": st.get("avgCPT", 0), "avg_cpa": st.get("avgCPA", 0),
+                    })
             upsert_rows(st_path, SEARCHTERMS_FIELDS, st_rows, period_key)
             print(f"\u2713 Upserted {len(st_rows)} search term rows \u2192 {st_path}")
         return

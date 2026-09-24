@@ -92,20 +92,35 @@ def read_asa_metrics(path, fetch_date_str, days=7):
         'name': '', 'country': '', 'keyword': '', 'bid': 0.0,
         'impr': 0, 'taps': 0, 'inst': 0, 'spend': 0.0, 'status': 'UNKNOWN'
     })
+    # Строка на ключ (asa_fetch.py --keywords): кампания — сумма, ключи — отдельно.
+    # keyword в кампанию не пишем: иначе там оседает последний ключ и IS матчится случайно.
+    kws = defaultdict(lambda: {
+        'campaign_id': '', 'name': '', 'country': '', 'keyword': '', 'bid': 0.0,
+        'impr': 0, 'taps': 0, 'inst': 0, 'spend': 0.0, 'status': 'UNKNOWN'
+    })
     for r in rows_to_use:
         cid = r['campaign_id']
         d = camps[cid]
         d['name'] = r.get('campaign_name', '')
         d['country'] = r.get('country', '')
-        d['keyword'] = r.get('keyword', '')
         d['bid'] = float(r.get('bid') or 0)
+        kw_text = (r.get('keyword') or '').strip().strip('[]').strip()
+        if kw_text:
+            k = kws[(cid, kw_text.lower())]
+            k.update(campaign_id=cid, name=d['name'], country=d['country'], keyword=kw_text,
+                     status=r.get('status', 'UNKNOWN'))
+            k['bid'] = max(k['bid'], float(r.get('bid') or 0))
+            k['impr'] += int(r.get('impressions') or 0)
+            k['taps'] += int(r.get('taps') or 0)
+            k['inst'] += int(r.get('installs') or 0)
+            k['spend'] += float(r.get('spend') or 0)
         d['impr'] += int(r.get('impressions') or 0)
         d['taps'] += int(r.get('taps') or 0)
         d['inst'] += int(r.get('installs') or 0)
         d['spend'] += float(r.get('spend') or 0)
         d['status'] = status_map.get(cid, 'UNKNOWN')
 
-    return camps
+    return camps, kws
 
 
 def read_amplitude_trials(path):
@@ -156,7 +171,7 @@ def run(args):
 
     fetch_date = args.fetch_date or str(date.today())
     days = args.days
-    camps = read_asa_metrics(args.metrics, fetch_date, days=days)
+    camps, kws = read_asa_metrics(args.metrics, fetch_date, days=days)
     trials_map = read_amplitude_trials(args.amplitude)
     is_data = read_is_report(args.is_report)
 
@@ -171,10 +186,6 @@ def run(args):
         cptrial = round(d['spend'] / trials, 2) if trials > 0 else None
         ir = round(trials / d['inst'] * 100, 1) if d['inst'] > 0 and trials > 0 else None
         ipm = round(d['inst'] / d['impr'] * 1000, 1) if d['impr'] > 0 else 0
-        kw = d['keyword'].lower()
-        geo = d['country'].upper()
-        is_info = is_data.get((kw, geo), {})
-        is_val = is_info.get('is', None)
         rows.append({
             'name': d['name'],
             'status': d['status'],
@@ -188,9 +199,10 @@ def run(args):
             'cpi': cpi,
             'cptrial': cptrial,
             'ipm': ipm,
-            'is': is_val,
         })
 
+    # IS% — только в разрезе по ключам (print_keywords): у кампании нет одного ключа,
+    # к которому его можно честно привязать.
     # Кампании с impressions, сортировка: сначала с триалами (по CPTrial), потом по installs, потом по impr
     with_impr = [r for r in rows if r['impr'] > 0]
     with_impr.sort(key=lambda x: (
@@ -203,25 +215,27 @@ def run(args):
 
     print()
     print(f"{'Кампания':<42} {'Geo':<3} {'Impr':>5} {'Inst':>5} {'Spend':>7} "
-          f"{'Trials':>7} {'TR%':>5} {'CPI':>6} {'CPTrial':>8} {'IPM':>5} {'IS%':>5}")
+          f"{'Trials':>7} {'TR%':>5} {'CPI':>6} {'CPTrial':>8} {'IPM':>5}")
     print("-" * 125)
 
     for r in with_impr:
         cpi_s   = f"${r['cpi']:.2f}" if r['cpi'] else "—"
         cpt_s   = f"${r['cptrial']:.2f}" if r['cptrial'] else "∞"
         tr_s    = f"{r['ir']:.0f}%" if r['ir'] else "—"
-        is_s    = f"{r['is']*100:.0f}%" if r['is'] is not None else "—"
         paused  = " [P]" if r['status'] == 'PAUSED' else ""
         name_s  = (r['name'] + paused)[:42]
         print(f"{name_s:<42} {r['country']:<3} "
               f"{r['impr']:>5} {r['inst']:>5} ${r['spend']:>6.2f} "
-              f"{r['trials']:>7} {tr_s:>5} {cpi_s:>6} {cpt_s:>8} {r['ipm']:>5.1f} {is_s:>5}")
+              f"{r['trials']:>7} {tr_s:>5} {cpi_s:>6} {cpt_s:>8} {r['ipm']:>5.1f}")
 
     if without_impr:
         print(f"\n0 impressions: {len(without_impr)} кампаний — "
               + ", ".join(r['name'].replace('PS_DE_','').replace('PS_AT_','AT:').replace('PS_CH_','CH:')
                           for r in without_impr[:12])
               + ("..." if len(without_impr) > 12 else ""))
+
+    if kws:
+        print_keywords(kws, camps, is_data)
 
     total_spend  = sum(r['spend'] for r in rows)
     total_inst   = sum(r['inst'] for r in rows)
@@ -239,6 +253,35 @@ def run(args):
         avg_tr = round(total_trials / total_inst * 100, 1) if total_inst else 0
         print(f"Trials {days}d:   {total_trials}   TR: {avg_tr}%   CPTrial: ${total_spend/total_trials:.2f}")
     print(f"max_cptrial = ${ue['max_cptrial']:.2f}")
+
+
+def print_keywords(kws, camps, is_data):
+    """Разрез по ключам внутри каждой кампании, где он есть в метриках."""
+    by_camp = defaultdict(list)
+    for k in kws.values():
+        by_camp[k['campaign_id']].append(k)
+    order = sorted(by_camp, key=lambda c: -camps[c]['spend'])
+    for cid in order:
+        items = by_camp[cid]
+        live = [k for k in items if k['impr'] > 0]
+        # status в asa_metrics.csv — статус кампании, не адгруппы: паузы ключей отсюда не видны
+        zero_on = [k for k in items if k['impr'] == 0]
+        c = camps[cid]
+        print(f"\n── {c['name']} ({c['country']}) — ключей с показами: {len(live)}, "
+              f"без показов (вкл. спауженные адгруппы): {len(zero_on)}")
+        if not live:
+            continue
+        print(f"  {'Ключ':<38} {'Bid':>5} {'Impr':>5} {'Taps':>4} {'Inst':>4} {'Spend':>7} "
+              f"{'CPI':>6} {'TTR%':>5} {'IPM':>6} {'IS%':>5}")
+        for k in sorted(live, key=lambda x: (-x['spend'], -x['impr'])):
+            cpi = f"${k['spend']/k['inst']:.2f}" if k['inst'] else "—"
+            ttr = f"{k['taps']/k['impr']*100:.1f}"
+            ipm = k['inst'] / k['impr'] * 1000
+            is_info = is_data.get((k['keyword'].lower(), k['country'].upper()))
+            is_s = f"{is_info['is']*100:.0f}%" if is_info else "—"
+            p = " [P]" if k['status'] == 'PAUSED' else ""
+            print(f"  {(k['keyword'] + p)[:38]:<38} {k['bid']:>5.2f} {k['impr']:>5} {k['taps']:>4} "
+                  f"{k['inst']:>4} ${k['spend']:>6.2f} {cpi:>6} {ttr:>5} {ipm:>6.1f} {is_s:>5}")
 
 
 def main():
