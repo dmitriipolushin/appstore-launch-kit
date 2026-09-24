@@ -25,7 +25,7 @@ and only within that app's topical space. A competitor's adamId returns an empty
 array with HTTP 200. Check what you have: python3 asa_api.py --list-apps
 
 Usage (run from scripts/asa/):
-    python3 keyword_popularity.py --seeds "pet health,dog tracker,cat" --country US
+    python3 keyword_popularity.py --seeds "pet health,dog tracker,cat" --storefronts US
     python3 keyword_popularity.py --seeds "pet" --storefronts US,GB,CA --out /tmp/pop.csv
 """
 
@@ -43,8 +43,7 @@ from env_setup import CONFIG_DIR  # noqa: F401
 
 COOKIE    = os.getenv("APPLE_SA_COOKIE", "")
 XSRF      = os.getenv("APPLE_SA_XSRF", "")
-ADAM_ID   = os.getenv("APPLE_SA_ADAM_ID", "6749845164")
-ADGROUP_ID = os.getenv("APPLE_SA_ADGROUP_ID", "2146056918")
+ADAM_ID   = os.getenv("APPLE_SA_ADAM_ID", "")
 BASE_URL  = "https://app-ads.apple.com/reporting/graphql"
 DELAY_SEC = 0.4
 
@@ -144,6 +143,14 @@ def fetch_all(seeds: list[str], storefronts: list[str]) -> dict[str, int]:
             "  APPLE_SA_COOKIE=<значение из DevTools>\n"
             "  APPLE_SA_XSRF=<значение cookie XSRF-TOKEN-CM>\n"
             "  APPLE_SA_ADAM_ID=<adamId приложения из нужной ниши>"
+        )
+    if not ADAM_ID:
+        sys.exit(
+            "ERROR: APPLE_SA_ADAM_ID не задан.\n"
+            "Нужен App Store ID твоего приложения из той же ниши, что и seeds —\n"
+            "оно должно быть в твоей ASA-организации (python3 asa_api.py --list-apps).\n"
+            "Добавь в ~/.config/aso-tools/api_keys.env:\n"
+            "  APPLE_SA_ADAM_ID=<adamId приложения>"
         )
 
     all_keywords: dict[str, int] = {}

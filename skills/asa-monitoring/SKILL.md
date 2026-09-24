@@ -188,7 +188,7 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asc/asc_fetch_analytics.py \
   --days 7
 ```
 
-ONGOING request ID для product_scanner: `6b504963-ab81-45ff-b354-d988dd9833ff`. При 409 — скрипт найдёт автоматически.
+ONGOING request ID отчёта скрипт находит сам: при 409 (запрос уже создан) подхватывает существующий.
 
 ```
 organic = asc_ftd_total − asa_installs

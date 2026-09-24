@@ -271,7 +271,7 @@ result = api.impression_share_reports(
     name="imp_share_YYYYMMDD",
     conditions=[{"field": "countryOrRegion", "operator": "IN", "values": ["DE","AT","CH"]}]
 )
-report_id = result["id"]  # например 64377355
+report_id = result["id"]  # например 12345678
 
 # 2. Дождаться завершения (обычно ~30-60 сек)
 res = api.get_single_impression_share_report(report_id)

@@ -18,7 +18,7 @@ Usage:
     python3 asa_fetch.py --project ./asa-monitoring --config ./asa-launch/config/campaigns_v2.json --days 7 --searchterms
 
     # Single campaign (ad-hoc):
-    python3 asa_fetch.py --project ./asa-monitoring --campaign-id 2143642028 --days 7
+    python3 asa_fetch.py --project ./asa-monitoring --campaign-id <campaign_id> --days 7
 
 Output (appended, never overwritten):
     {project}/data/asa_metrics.csv       — keyword-level metrics, all campaigns

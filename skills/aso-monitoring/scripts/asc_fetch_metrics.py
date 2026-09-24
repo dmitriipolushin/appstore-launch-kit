@@ -4,8 +4,8 @@ Fetch App Store Connect analytics metrics (impressions, page views, app units) t
 Credentials are read from projects/{app}/config/asc_config.env
 
 Usage (run from repo root):
-    python3 scripts/asc_fetch_metrics.py --project projects/movescroll --days 30
-    python3 scripts/asc_fetch_metrics.py --project projects/movescroll --since 2026-02-01
+    python3 scripts/asc_fetch_metrics.py --project projects/my_app --days 30
+    python3 scripts/asc_fetch_metrics.py --project projects/my_app --since 2026-02-01
 
 Output:
     projects/{app}/data/reports/asc_metrics_{date}_since{date}.csv
@@ -176,7 +176,7 @@ def save_csv(rows: List[Dict], path: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch App Store Connect metrics to CSV")
-    parser.add_argument("--project", required=True, help="Path to project dir (e.g. projects/movescroll)")
+    parser.add_argument("--project", required=True, help="Path to project dir (e.g. projects/my_app)")
     parser.add_argument("--since", help="Start date YYYY-MM-DD")
     parser.add_argument("--days", type=int, help="Number of days back (alternative to --since)")
     args = parser.parse_args()

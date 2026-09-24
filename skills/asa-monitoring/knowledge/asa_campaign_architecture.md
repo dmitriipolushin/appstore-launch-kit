@@ -145,7 +145,7 @@
   "default_bid": 0.10,
   "bid_strategy": "start at $0.10, raise $0.20 every 3 days until impressions appear",
 
-  "v1_campaign_id": 2143544578,
+  "v1_campaign_id": 0000000003,
   "v1_status": "PAUSED",
   "v1_paused_date": "YYYY-MM-DD",
 

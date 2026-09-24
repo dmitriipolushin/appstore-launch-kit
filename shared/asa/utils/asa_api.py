@@ -873,7 +873,7 @@ class SearchAdsAPI:
         Updates targeting keywords used in ad groups.
         Here is an example keywords list
         keywords = [{
-            "id": 291202529,
+            "id": 11111111,
             "status": "PAUSED",
             "bidAmount": {
                 "amount": "0.5",
@@ -881,7 +881,7 @@ class SearchAdsAPI:
             }
         },
         {
-            "id": 291202530,
+            "id": 22222222,
             "status": "PAUSED",
             "bidAmount": {
                 "amount": "0.5",
@@ -1020,7 +1020,7 @@ class SearchAdsAPI:
         """
         Updates multiple campaign negative keywords.
         [{
-            "id": "291225104",
+            "id": "33333333",
             "status" : "PAUSED",
         }]
         """

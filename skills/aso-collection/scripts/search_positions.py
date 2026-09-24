@@ -4,12 +4,12 @@
 Usage:
     python3 scripts/search_positions.py \
       --keyword "dog health" \
-      --app-ids 6749845164,123456789 \
+      --app-ids <your_app_id>,<competitor_id> \
       --project projects/pet_screener
 
     python3 scripts/search_positions.py \
       --keyword "food scanner" \
-      --app-ids 1571725006,6739765789,1092799236 \
+      --app-ids <app_id_1>,<app_id_2>,<app_id_3> \
       --country gb \
       --project projects/my_app
 

@@ -4,9 +4,9 @@ Upload ASO metadata (title, subtitle, keywords) to App Store Connect.
 
 Usage:
     python3 upload_metadata.py \
-        --app-id 6757700411 \
-        --key-id M88ZA99USJ \
-        --issuer-id 78672159-... \
+        --app-id <app_id> \
+        --key-id <key_id> \
+        --issuer-id <issuer_id> \
         --key-file path/to/AuthKey.p8 \
         --locales en-US:title:subtitle:keywords es-MX:title:subtitle:keywords ...
 
