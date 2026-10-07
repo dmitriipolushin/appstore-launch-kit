@@ -636,7 +636,7 @@ class SearchAdsAPI:
         cpc_bid=None,
         start_time=None,
         end_time=None,
-        automated_keywords_opt_in=False,
+        automated_keywords_opt_in=None,
         age=None,
         gender=None,
         device_class=None,
@@ -647,6 +647,9 @@ class SearchAdsAPI:
     ):
         """
         Allows edits to adGroups according to campaignId.
+        automated_keywords_opt_in=None leaves Search Match untouched: the PUT only
+        carries the fields passed, and a False here would switch Search Match off.
+        Pass True/False only when the change is intended.
         For PUT, on adGroup update, if updating targetingDimensions
         then all dimensions must be specified.
         {
@@ -717,9 +720,9 @@ class SearchAdsAPI:
                 "locality": {"included": locality},
                 "appDownloaders": appDownloaders,
             }
-        data = {
-            "automatedKeywordsOptIn": automated_keywords_opt_in,
-        }
+        data = {}
+        if automated_keywords_opt_in is not None:
+            data["automatedKeywordsOptIn"] = automated_keywords_opt_in
         if adgroup_name is not None:
             data["name"] = adgroup_name
         if dimensions is not None:

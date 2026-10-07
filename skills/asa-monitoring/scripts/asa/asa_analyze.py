@@ -6,10 +6,17 @@ Usage:
     python3 asa_analyze.py \
         --metrics ./ASA/asa-monitoring/data/asa_metrics.csv \
         --unit-economics ./unit-economics/asa_pause_strategy.md \
-        --amplitude ./amplitude_trials.csv \
+        [--amplitude ./amplitude_trials.csv] \
         [--is-report ./ASA/asa-monitoring/data/is_report_latest.csv] \
         [--fetch-date 2026-05-11] \
-        [--days 7]
+        [--since 2026-05-04 --end 2026-05-10 | --days 7]
+
+--amplitude не обязателен: у приложений с разовыми покупками (IAP) триалов нет,
+колонки Trials/TR%/CPTrial тогда пустые, а выручку сверяют по Apphud отдельно.
+
+Ключи различаются по типу соответствия: EXACT пишется как [ключ], BROAD — без
+скобок. Строки `~ <адгруппа> (Search Match)` — остаток адгруппы сверх ключей
+(см. asa_fetch.py --keywords).
 
 Output:
     Таблица метрик по всем ENABLED кампаниям с impressions > 0.
@@ -56,9 +63,11 @@ def parse_unit_economics(path):
     return result
 
 
-def read_asa_metrics(path, fetch_date_str, days=7):
-    target_end = fetch_date_str
-    target_start = str(date.fromisoformat(fetch_date_str) - timedelta(days=days))
+def read_asa_metrics(path, fetch_date_str, days=7, since=None, end=None):
+    # Период — тот же, что передавался в asa_fetch.py (--since/--end). Без них —
+    # прежнее правило «fetch_date − days … fetch_date».
+    target_end = end or fetch_date_str
+    target_start = since or str(date.fromisoformat(target_end) - timedelta(days=days))
 
     with open(path) as f:
         rows = list(csv.DictReader(f))
@@ -96,7 +105,8 @@ def read_asa_metrics(path, fetch_date_str, days=7):
     # keyword в кампанию не пишем: иначе там оседает последний ключ и IS матчится случайно.
     kws = defaultdict(lambda: {
         'campaign_id': '', 'name': '', 'country': '', 'keyword': '', 'bid': 0.0,
-        'impr': 0, 'taps': 0, 'inst': 0, 'spend': 0.0, 'status': 'UNKNOWN'
+        'impr': 0, 'taps': 0, 'inst': 0, 'spend': 0.0, 'status': 'UNKNOWN',
+        'active': False, 'bid_rank': None,
     })
     for r in rows_to_use:
         cid = r['campaign_id']
@@ -104,12 +114,21 @@ def read_asa_metrics(path, fetch_date_str, days=7):
         d['name'] = r.get('campaign_name', '')
         d['country'] = r.get('country', '')
         d['bid'] = float(r.get('bid') or 0)
-        kw_text = (r.get('keyword') or '').strip().strip('[]').strip()
+        # Скобки не срезаем: [ключ] — EXACT, без скобок — BROAD, это разные ключи.
+        kw_text = (r.get('keyword') or '').strip()
         if kw_text:
             k = kws[(cid, kw_text.lower())]
-            k.update(campaign_id=cid, name=d['name'], country=d['country'], keyword=kw_text,
-                     status=r.get('status', 'UNKNOWN'))
-            k['bid'] = max(k['bid'], float(r.get('bid') or 0))
+            k.update(campaign_id=cid, name=d['name'], country=d['country'], keyword=kw_text)
+            # Один текст может жить в нескольких адгруппах (спауженная копия, адгруппа
+            # на холде, где ключ формально ACTIVE). Ставка — у активной строки с
+            # наибольшим числом показов: это тот ключ, что реально крутится.
+            kw_status = (r.get('kw_status') or '').upper()
+            is_active = kw_status in ('ACTIVE', 'ENABLED')
+            rank = (is_active, int(r.get('impressions') or 0), float(r.get('bid') or 0))
+            if k['bid_rank'] is None or rank > k['bid_rank']:
+                k['bid'], k['bid_rank'] = float(r.get('bid') or 0), rank
+            k['active'] = k['active'] or is_active
+            k['status'] = 'ACTIVE' if k['active'] else (kw_status or r.get('status', 'UNKNOWN'))
             k['impr'] += int(r.get('impressions') or 0)
             k['taps'] += int(r.get('taps') or 0)
             k['inst'] += int(r.get('installs') or 0)
@@ -125,6 +144,8 @@ def read_asa_metrics(path, fetch_date_str, days=7):
 
 def read_amplitude_trials(path):
     trials = {}
+    if not path:
+        return trials
     with open(path) as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -171,7 +192,8 @@ def run(args):
 
     fetch_date = args.fetch_date or str(date.today())
     days = args.days
-    camps, kws = read_asa_metrics(args.metrics, fetch_date, days=days)
+    camps, kws = read_asa_metrics(args.metrics, fetch_date, days=days,
+                                  since=args.since, end=args.end)
     trials_map = read_amplitude_trials(args.amplitude)
     is_data = read_is_report(args.is_report)
 
@@ -277,7 +299,7 @@ def print_keywords(kws, camps, is_data):
             cpi = f"${k['spend']/k['inst']:.2f}" if k['inst'] else "—"
             ttr = f"{k['taps']/k['impr']*100:.1f}"
             ipm = k['inst'] / k['impr'] * 1000
-            is_info = is_data.get((k['keyword'].lower(), k['country'].upper()))
+            is_info = is_data.get((k['keyword'].strip('[]').lower(), k['country'].upper()))
             is_s = f"{is_info['is']*100:.0f}%" if is_info else "—"
             p = " [P]" if k['status'] == 'PAUSED' else ""
             print(f"  {(k['keyword'] + p)[:38]:<38} {k['bid']:>5.2f} {k['impr']:>5} {k['taps']:>4} "
@@ -288,10 +310,13 @@ def main():
     parser = argparse.ArgumentParser(description='ASA Campaign Metrics')
     parser.add_argument('--metrics', required=True)
     parser.add_argument('--unit-economics', required=True)
-    parser.add_argument('--amplitude', required=True)
+    parser.add_argument('--amplitude', default=None,
+                        help='CSV триалов по campaign_id; не нужен для IAP-приложений')
     parser.add_argument('--is-report', default=None)
     parser.add_argument('--fetch-date', default=None)
     parser.add_argument('--days', default=7, type=int)
+    parser.add_argument('--since', default=None, help='period_start, как в asa_fetch.py')
+    parser.add_argument('--end', default=None, help='period_end, как в asa_fetch.py')
     args = parser.parse_args()
     run(args)
 

@@ -38,6 +38,28 @@ api.update_targeting_keywords(campaign_id, ag_id,
 api.update_adgroup(campaign_id, ag_id, cpc_bid=1.50, currency="USD")
 ```
 
+## Ставка и статус Discovery (Search Match)
+
+У Discovery нет targeting-ключей: ставка — это `defaultBidAmount` адгруппы.
+
+```python
+# Ставка Discovery — Search Match не трогается
+api.update_adgroup(campaign_id, DISCOVERY_AG_ID, cpc_bid=0.70, currency="USD")
+
+# Включить / выключить адгруппу (Discovery на паузе — расход гео может упасть до нуля)
+api.api_call(f"campaigns/{campaign_id}/adgroups/{DISCOVERY_AG_ID}",
+             json_data={"status": "ENABLED"}, method="PUT")
+```
+
+⚠️ `update_adgroup` шлёт PUT только с переданными полями. `automated_keywords_opt_in`
+передавать **только** когда Search Match включается или выключается намеренно.
+До 2026-10-07 этот параметр по умолчанию был `False`, и любая правка ставки
+Discovery через обёртку молча выключала Search Match. Сейчас дефолт `None` — поле
+не отправляется. Если работаешь со старой копией `asa_api.py` или пишешь PUT руками —
+не клади `automatedKeywordsOptIn` в тело запроса.
+
+После правки — перечитать адгруппу и проверить `automatedKeywordsOptIn == True` у Discovery.
+
 ### ⚠️ Массовое поднятие: цель считать от кабинета, не от конфига
 
 Когда ставки поднимаются пачкой по десяткам адгрупп, прогон может оборваться
