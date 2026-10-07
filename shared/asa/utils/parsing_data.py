@@ -56,6 +56,7 @@ def transform_asa_keywords(keywords: list[dict]):
             'groupId': metadata['adGroupId'],
             'keyword': name,
             'bid': float(metadata['bidAmount']['amount']),
+            'status': metadata.get('keywordStatus', ''),
             'impressions': total['impressions'],
             'installs': total['totalInstalls'],
             'ttr': total['ttr'], # taps / impressions

@@ -8,9 +8,11 @@ Fetch ASA metrics in two requests:
 кампанию). Нужно для архитектуры «1 ключ = 1 адгруппа»: там в кампании
 десятки ключей, и campaign-level строка схлопывает их в одну, теряя разбивку.
 
-⚠️ В keyword-режиме не видно Search Match: у Discovery-адгруппы нет targeting-
-ключей, и в keyword-отчёт она не попадает вовсе. Сумма строк будет меньше
-расхода кампании ровно на неё — сверять объём только по campaign-level.
+Search Match (Discovery-адгруппы) и трафик, который Apple не привязал к ключу,
+в keyword-отчёт не попадают. Поэтому в keyword-режиме на каждую адгруппу, где
+adgroup-отчёт больше суммы её ключей, пишется строка-остаток
+`~ <адгруппа> (Search Match)` или `~ <адгруппа> (без ключа)`. Сумма строк
+кампании совпадает с campaign-level; расхождение печатается как WARN.
 
 Usage:
     python3 asa_fetch.py --project ./asa-monitoring --config ./asa-launch/config/campaigns_v2.json --days 7
@@ -47,6 +49,7 @@ METRICS_FIELDS = [
     "keyword", "bid",
     "impressions", "taps", "installs", "spend",
     "ttr", "cr", "avg_cpt", "avg_cpa", "ipm",
+    "kw_status",  # keyword-режим: ACTIVE / PAUSED ключа; у строки-остатка — статус адгруппы
 ]
 
 SEARCHTERMS_FIELDS = [
@@ -206,6 +209,46 @@ def fetch_keywords_for_orphan(api, campaign_id, campaign_name, start_date, end_d
     except Exception as e:
         print(f"    keyword fetch error for {campaign_id}: {e}")
         return []
+
+
+def fetch_adgroup_gaps(api, campaign_id, start_date, end_date, kws):
+    """Строки-остатки: adgroup-отчёт минус сумма ключей этой адгруппы.
+
+    Ловит Search Match (у Discovery нет targeting-ключей) и показы/расход,
+    которые Apple не привязал ни к одному ключу.
+    """
+    try:
+        result = api.get_adgroups_report_by_date(campaign_id, start_date, end_date)
+        rows = result[0] if isinstance(result, tuple) else (result or [])
+    except Exception as e:
+        print(f"    adgroup fetch error for {campaign_id}: {e}")
+        return []
+    by_ag = {}
+    for kw in kws:
+        a = by_ag.setdefault(kw.get("groupId"), {"impressions": 0, "taps": 0, "installs": 0, "spend": 0.0})
+        a["impressions"] += kw.get("impressions", 0)
+        a["taps"] += kw.get("taps", 0)
+        a["installs"] += kw.get("installs", 0)
+        a["spend"] += kw.get("spends", 0)
+    gaps = []
+    for row in rows:
+        meta = row.get("metadata", {})
+        total = row.get("total", {})
+        k = by_ag.get(meta.get("adGroupId"), {})
+        g = {
+            "impressions": total.get("impressions", 0) - k.get("impressions", 0),
+            "taps": total.get("taps", 0) - k.get("taps", 0),
+            "installs": total.get("totalInstalls", 0) - k.get("installs", 0),
+            "spend": round(float(total.get("localSpend", {}).get("amount", 0)) - k.get("spend", 0.0), 4),
+        }
+        if g["impressions"] <= 0 and g["spend"] <= 0.005:
+            continue
+        sm = meta.get("automatedKeywordsOptIn")
+        g["keyword"] = f"~ {meta.get('adGroupName', meta.get('adGroupId'))} ({'Search Match' if sm else 'без ключа'})"
+        g["bid"] = float((meta.get("defaultBidAmount") or {}).get("amount", 0) or 0)
+        g["kw_status"] = meta.get("adGroupStatus") or meta.get("adGroupDisplayStatus", "")
+        gaps.append(g)
+    return gaps
 
 
 def fetch_searchterms(api, campaign_id, start_date, end_date):
@@ -403,7 +446,17 @@ def main():
             country = (config_lookup.get(cid, {}).get("country")
                        or api_meta.get(cid, {}).get("country") or infer_country(cname))
             kws = fetch_keywords_for_orphan(api, int(cid), cname, start_date, end_date)
-            for kw in kws:
+            gaps = fetch_adgroup_gaps(api, int(cid), start_date, end_date, kws)
+            for kw in kws + [
+                {"keyword": g["keyword"], "bid": g["bid"], "impressions": g["impressions"],
+                 "taps": g["taps"], "installs": g["installs"], "spends": g["spend"],
+                 "kw_status": g["kw_status"],
+                 "ttr": g["taps"] / g["impressions"] if g["impressions"] > 0 else 0,
+                 "cr": g["installs"] / g["taps"] if g["taps"] > 0 else 0,
+                 "avgCPT": g["spend"] / g["taps"] if g["taps"] > 0 else 0,
+                 "avgCPA": g["spend"] / g["installs"] if g["installs"] > 0 else 0}
+                for g in gaps
+            ]:
                 impr = kw.get("impressions", 0)
                 inst = kw.get("installs", 0)
                 metrics_rows.append({
@@ -418,7 +471,11 @@ def main():
                     "avg_cpt": round(kw.get("avgCPT", 0), 4),
                     "avg_cpa": round(kw.get("avgCPA", 0), 4),
                     "ipm": round(inst / impr * 1000, 1) if impr else 0,
+                    "kw_status": kw.get("kw_status") or kw.get("status", ""),
                 })
+            camp_spend = sum(r["spend"] for r in metrics_rows if r["campaign_id"] == cid)
+            if abs(camp_spend - parsed["spend"]) > 0.05:
+                print(f"    WARN {cname}: строки ${camp_spend:.2f} ≠ кампания ${parsed['spend']:.2f}")
             st_campaign_ids.append((cid, cname))
         upsert_rows(metrics_path, METRICS_FIELDS, metrics_rows, period_key)
         with_impr = sum(1 for r in metrics_rows if r["impressions"] > 0)

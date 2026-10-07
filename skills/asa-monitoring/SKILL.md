@@ -15,6 +15,17 @@ description: Мониторинг работающих Apple Search Ads камп
 
 - Папка проекта (содержит `./ASA/` и `./unit-economics/`)
 
+## Пути и креды проекта
+
+Пути в этом файле (`./ASA/asa-monitoring/`, `./ASA/asa_changelog.md`) — раскладка по умолчанию.
+**Сначала прочитай `README.md` проекта**: если он задаёт свою раскладку, рабочий кабинет
+(orgId, clientId, keyId) или команду экспорта переменных — действует README, а не этот файл
+и не `~/.config/aso-tools/api_keys.env`. Пример: проект, где `asa-monitoring/` и
+`asa_changelog.md` лежат в корне, а в `api_keys.env` прописан другой рекламный аккаунт —
+перед каждым вызовом скриптов нужен `export ASA_ORG_ID=… ASA_CLIENT_ID=… ASA_KEY_ID=…` из README.
+
+Если README молчит — раскладка по умолчанию и креды из `api_keys.env`.
+
 ## Первоначальная настройка (один раз)
 
 Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читают их сами (`scripts/env_setup.py`).
@@ -42,9 +53,14 @@ Amplitude подключается как MCP-сервер, отдельного
 ```
 
 **Схема `asa_metrics.csv`:**
-`fetch_date, period_start, period_end, campaign_id, campaign_name, country, keyword, bid, impressions, taps, installs, spend, ttr, cr, avg_cpt, avg_cpa, ipm`
+`fetch_date, period_start, period_end, campaign_id, campaign_name, country, status, keyword, bid, impressions, taps, installs, spend, ttr, cr, avg_cpt, avg_cpa, ipm, kw_status`
 
-Дедупликация по `(fetch_date, campaign_id, period_start)` — повторный запуск не дублирует строки.
+`keyword`: `[текст]` — EXACT, `текст` без скобок — BROAD, `~ <адгруппа> (Search Match)` / `~ <адгруппа> (без ключа)` —
+остаток адгруппы сверх её ключей (Discovery и трафик, который Apple не привязал к ключу).
+`status` — статус кампании, `kw_status` — статус ключа (у строки-остатка — адгруппы).
+
+Дедупликация по `(fetch_date, period_start, period_end)`: повторный запуск за тот же период **заменяет все его строки**.
+Поэтому прогон без `--keywords` и с `--keywords` за один период затирают друг друга — использовать только один режим (шаг 1).
 
 ASC-конфиг: `./ASO/config/asc_config.env` (ASC_KEY_ID, ASC_ISSUER_ID, ASC_APP_ID).
 Ключ: `./ASO/config/asc_keys/AuthKey_{KEY_ID}.p8`.
@@ -78,21 +94,36 @@ ASC-конфиг: `./ASO/config/asc_config.env` (ASC_KEY_ID, ASC_ISSUER_ID, ASC_
 
 Выполни шаги 1–4, затем **жди подтверждения** перед переходом к Этапу 2.
 
-#### Шаг 1 — Fetch ASA данных (7 дней)
+#### Шаг 1 — Fetch ASA данных (7 полных дней)
 
 ```bash
-# 7d_ago = today − 7 дней
+# since = today − 7, end = вчера → 7 полных дней (обе даты включительно)
 python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_fetch.py \
   --project ./ASA/asa-monitoring \
   --app-id {our_app_id} \
-  --since {7d_ago} --end {today}
+  --since {today−7} --end {yesterday} \
+  --keywords --searchterms
 ```
 
-Результат: строки в `asa_metrics.csv` с `period_start={7d_ago}`, `period_end={today}`.
+Результат: строки на ключ в `asa_metrics.csv` с `period_start={today−7}`, `period_end={yesterday}`,
+плюс строки-остатки Search Match по адгруппам. Сумма строк кампании = campaign-level расход;
+если нет — скрипт печатает `WARN … строки $X ≠ кампания $Y`, и это надо чинить, а не обходить.
 
-⚠️ `--days 1` и `--since {date}` без `--end` дают период до сегодня (2 дня), НЕ один день.
+⚠️ `--end` включителен: `--since {today−7} --end {today}` — это 8 дней, последний неполный.
+`--days 1` и `--since {date}` без `--end` тоже дают период до сегодня включительно.
+
+⚠️ Отчёты считаются в UTC — так же, как кабинет. Если выручку сверяют по Apphud или
+другому источнику, **период ASA должен совпадать с его периодом день в день**: сдвиг
+на один день меняет расход на 20–25% и ROAS вслед за ним. Спроси у пользователя даты,
+если он приносит выручку.
 
 #### Шаг 2 — Триалы из Amplitude
+
+**Только для подписочных приложений.** Если монетизация — разовые покупки (IAP) и
+`trial_started` не трекается (так написано в `unit-economics/asa_pause_strategy.md`
+или README проекта) — шаг пропустить, `--amplitude` в шаге 4 не передавать.
+Выручку по кампаниям/адгруппам тогда даёт пользователь из Apphud (proceeds net,
+тот же период, что в шаге 1).
 
 Один запрос — все campaign_id за те же 7 дней. Сниппет — см. `api_snippets.md`.
 
@@ -115,7 +146,13 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_fetch.py \
 ./ASA/asa-monitoring/data/is_report_latest.csv
 ```
 
-Если кампания отсутствует в IS-отчёте → объём мал, Apple не раскрывает IS → +$0.20 без IS допустимо.
+Если ключа нет в IS-отчёте → объём мал, Apple не раскрывает IS → +$0.20 без IS допустимо.
+В нишах с малым объёмом так будет почти со всеми ключами — это нормально, правило выше и есть рабочий путь.
+
+**IS-отчёт — источник негативов для Discovery.** То, что в нём остаётся, — обычно
+запросы, на которые нас показывает Search Match (`apple music`, `yt music`, `spotify`,
+названия плееров и сервисов). Каждый такой запрос сверить с search terms Discovery:
+показы без установок или чужой интент → кандидат в кампанийные EXACT-негативы (шаг 5).
 
 #### Шаг 4 — Метрики через asa_analyze.py
 
@@ -123,13 +160,16 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_fetch.py \
 python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_analyze.py \
   --metrics ./ASA/asa-monitoring/data/asa_metrics.csv \
   --unit-economics ./unit-economics/asa_pause_strategy.md \
-  --amplitude ./ASA/asa-monitoring/data/amplitude_trials.csv \
-  --days 7 \
+  --since {today−7} --end {yesterday} \
+  [--amplitude ./ASA/asa-monitoring/data/amplitude_trials.csv] \
   [--is-report ./ASA/asa-monitoring/data/is_report_latest.csv] \
   [--fetch-date {today}]
 ```
 
-Скрипт выводит таблицу по кампаниям (impr, inst, spend, trials, IR%, CPI, CPTrial, IPM), а под ней — разрез по ключам внутри каждой кампании (bid, impr, taps, inst, spend, CPI, TTR%, IPM, IS%). IS% есть только у ключей: у кампании нет одного ключа, к которому его можно привязать.
+`--since/--end` — те же даты, что в шаге 1: без них скрипт ищет период «fetch_date − 7 … fetch_date»
+и может взять другую выгрузку того же дня. `--amplitude` — только для подписочных приложений.
+
+Скрипт выводит таблицу по кампаниям (impr, inst, spend, trials, IR%, CPI, CPTrial, IPM), а под ней — разрез по ключам внутри каждой кампании (bid, impr, taps, inst, spend, CPI, TTR%, IPM, IS%). Discovery идут отдельными строками `~ … (Search Match)`. IS% есть только у ключей: у кампании нет одного ключа, к которому его можно привязать.
 **Никаких рекомендаций — только данные.**
 
 **Если вывод неверный — чини скрипт, не анализируй вручную.**
@@ -158,6 +198,10 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_analyze.py \
 1. Выполнить через API (сниппеты в `api_snippets.md`):
    - ⚠️ Верифицировать adgroup_id через `api.get_adgroups(campaign_id)` перед keyword-операциями
    - После bid raise — обновить adgroup default CPT bid = максимальная keyword bid
+   - У Discovery (Search Match) ставка — это default bid адгруппы. Правка адгруппы не должна
+     трогать `automatedKeywordsOptIn`: в `update_adgroup` не передавать `automated_keywords_opt_in`,
+     если Search Match не включается/выключается намеренно (см. `api_snippets.md`)
+   - После правок перечитать из кабинета каждое изменённое поле и сверить с планом
 
 2. Записать в `./ASA/asa_changelog.md` новую запись в конец файла:
 
@@ -277,9 +321,19 @@ python3 ~/.claude/skills/aso-collection/scripts/search_positions.py \
 
 ## Структурные правила
 
-- Только EXACT match, Search Match (`automatedKeywordsOptIn`) выключен всегда — Discovery-adgroup не используется
+**Это правила по умолчанию, а не догма.** Если `README.md` проекта или changelog фиксирует
+другую архитектуру (решение владельца) — работай в ней и не предлагай «привести к стандарту»
+без новых данных. Примеры отклонений, которые встречаются: BROAD-ключи на смысловой кластер,
+Discovery-адгруппа с Search Match внутри основной кампании, много адгрупп «1 ключ = 1 адгруппа»
+в одной кампании на гео. Тогда Discovery и BROAD оцениваются по тем же gates, что и EXACT,
+плюс их search terms — источник новых ключей и негативов.
+
+По умолчанию:
+- Только EXACT match, Search Match (`automatedKeywordsOptIn`) выключен — Discovery-adgroup не используется
 - 1 ключ = 1 кампания (бюджетная изоляция + точный CPTrial)
 - Bid discovery: старт $0.80, +$0.20 каждые ~2 часа, пока impressions = 0
-- Bid raise (оптимизация): только если IS < 90%
+
+Всегда, независимо от архитектуры:
+- Bid raise (оптимизация): только если IS < 90% (или ключа нет в IS-отчёте — см. шаг 3)
 - Paused кампании не удалять — данные нужны для истории
 - Target IPM = 250
