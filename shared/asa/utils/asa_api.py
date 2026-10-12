@@ -2188,14 +2188,19 @@ class SearchAdsAPI:
                 return None
             if res["data"]["reportingDataResponse"] is None:
                 return None
-            row.extend(res["data"]["reportingDataResponse"]["row"])
-            if return_grand_totals:
-                grandTotals.extend(res["data"]["reportingDataResponse"]["grandTotals"])
+            # Кампания без данных за период (например, пауза с первого дня)
+            # приходит без grandTotals, а иногда и без pagination — это не ошибка.
+            rdr = res["data"]["reportingDataResponse"]
+            page = rdr.get("row") or []
+            row.extend(page)
+            if return_grand_totals and rdr.get("grandTotals"):
+                gt = rdr["grandTotals"]
+                grandTotals.extend(gt if isinstance(gt, list) else [gt])
             res_len = len(row)
 
             offset = len(row)
-            # print(limit)
-            if res_len == limit or res_len >= res["pagination"]["totalResults"]:
+            total = (res.get("pagination") or {}).get("totalResults", res_len)
+            if not page or res_len == limit or res_len >= total:
                 break
         if return_grand_totals:
             return row, grandTotals

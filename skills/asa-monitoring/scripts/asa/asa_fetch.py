@@ -70,12 +70,15 @@ def get_dates(days=None, since=None, end=None):
     return start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
 
 
-def fetch_api_meta(api, campaign_ids):
+def fetch_api_meta(api, campaign_ids, deep=True):
     """Return {cid: {country, keyword, bid}} read from the live API.
 
     Used when no config file supplies keyword/bid/country — otherwise country
     silently defaults to DE and bid to 0, which is wrong for non-DE campaigns.
-    Cost: 1 call for the campaign list + 2 calls per campaign.
+    Cost: 1 call for the campaign list; deep=True — плюс обход всех адгрупп и
+    ключей кампании (1 + N запросов). В keyword-режиме нужна только страна,
+    поэтому deep=False: на кабинете с 13 кампаниями и 85 адгруппами в одной
+    глубокий обход — сотни запросов.
     """
     meta = {}
     wanted = {str(c) for c in campaign_ids}
@@ -88,6 +91,9 @@ def fetch_api_meta(api, campaign_ids):
 
     for cid in wanted:
         entry = {"country": countries.get(cid, ""), "keyword": "", "bid": 0.0}
+        if not deep:
+            meta[cid] = entry
+            continue
         try:
             adgroups = api.get_adgroups(int(cid)) or []
             kws = []
@@ -431,7 +437,7 @@ def main():
     api_meta = {}
     if orphans:
         print(f"Enriching {len(orphans)} campaigns without config (country/bid from API)…")
-        api_meta = fetch_api_meta(api, orphans)
+        api_meta = fetch_api_meta(api, orphans, deep=not args.keywords)
 
     metrics_rows = []
     st_campaign_ids = []
@@ -441,12 +447,26 @@ def main():
     # campaign-level агрегат теряет разбивку, а fetch_api_meta проставляет
     # keyword только когда активный ключ в кампании ровно один.
     if args.keywords:
+        skipped = []
         for cid, parsed in aggregated.items():
             cname = parsed["campaign_name"]
             country = (config_lookup.get(cid, {}).get("country")
                        or api_meta.get(cid, {}).get("country") or infer_country(cname))
-            kws = fetch_keywords_for_orphan(api, int(cid), cname, start_date, end_date)
-            gaps = fetch_adgroup_gaps(api, int(cid), start_date, end_date, kws)
+            # Не запущенная кампания без единого показа за период — пропуск, не
+            # ошибка: строки-нули по её ключам ничего не дают, а отчёт по такой
+            # кампании Apple отдаёт неполным (без grandTotals/pagination).
+            # Запущенную пустую кампанию оставляем — её нулевые ключи и есть сигнал.
+            if (parsed["status"] != "ENABLED" and not parsed["impressions"]
+                    and not parsed["spend"]):
+                skipped.append(f"{cname} ({parsed['status']})")
+                continue
+            try:
+                kws = fetch_keywords_for_orphan(api, int(cid), cname, start_date, end_date)
+                gaps = fetch_adgroup_gaps(api, int(cid), start_date, end_date, kws)
+            except Exception as e:                   # noqa: BLE001
+                print(f"    ⚠️  {cname}: нет данных по ключам ({type(e).__name__}: {e}) — пропуск")
+                skipped.append(f"{cname} (ошибка)")
+                continue
             for kw in kws + [
                 {"keyword": g["keyword"], "bid": g["bid"], "impressions": g["impressions"],
                  "taps": g["taps"], "installs": g["installs"], "spends": g["spend"],
@@ -477,6 +497,8 @@ def main():
             if abs(camp_spend - parsed["spend"]) > 0.05:
                 print(f"    WARN {cname}: строки ${camp_spend:.2f} ≠ кампания ${parsed['spend']:.2f}")
             st_campaign_ids.append((cid, cname))
+        if skipped:
+            print(f"  пропущено без данных за период: {len(skipped)} — " + "; ".join(skipped))
         upsert_rows(metrics_path, METRICS_FIELDS, metrics_rows, period_key)
         with_impr = sum(1 for r in metrics_rows if r["impressions"] > 0)
         print(f"\n\u2713 Upserted {len(metrics_rows)} keyword rows "
