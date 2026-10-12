@@ -254,7 +254,7 @@ multiplier = organic / asa_installs
 python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
   --term "ki scan" --country de
 ```
-Tier HIGH = позиции 1–5 в autocomplete.
+Тир HIGH по hints не информативен (суррогат по позиции, почти у всех 10000) — смотри `hits` и Search Popularity. Сбойные запросы считаются в итоге (`НЕУДАЧНЫХ N`, код выхода 3), повтор команды дозапрашивает только их.
 
 **ASA Popularity:**
 ```bash

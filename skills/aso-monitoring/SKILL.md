@@ -228,7 +228,7 @@ python3 ~/.claude/skills/aso-monitoring/scripts/keyword_suggest.py \
   --seeds "food check,ingredient scan,allergy" --country us
 ```
 
-Tier HIGH = позиция 1–5 в autocomplete. Чем выше тир — тем чаще вводят в данном сторефронте.
+Тир HIGH/MEDIUM/LOW по hints не информативен: после обхода a–z почти у всех priority 10000. Сортируй по `hits` (в скольких подсказках встретился термин), объём — только из Search Popularity. Сбойные запросы считаются в итоге (`НЕУДАЧНЫХ N`, код выхода 3) — повтори команду, удачное возьмётся из кеша.
 
 **Источники сидов для discovery (по порядку):**
 1. Текущие токены title/subtitle нашего приложения
