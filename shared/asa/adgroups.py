@@ -52,13 +52,18 @@ class AdGroupCreator(ASA):
               "bidAmount": {"amount": f"{bid:.2f}", "currency": "USD"}}])
         return ag["id"], (kw[0]["id"] if kw else None)
 
-    def add_keywords(self, project, geo, keywords, bid, dry_run=False):
+    def add_keywords(self, project, geo, keywords, bid, dry_run=False, max_bid=None):
+        """Потолок из economics — ориентир: ставка выше него допустима (см. bids.py),
+        печатается предупреждение. Жёсткий предел — только явный max_bid."""
         cfg = load_config(project)
+        if max_bid is not None and bid > max_bid:
+            raise RuntimeError(f"Ставка ${bid:.2f} выше заданного --max-bid ${max_bid:.2f}")
         cap = bid_ceilings(cfg).get(geo)
         if cap is None:
-            raise RuntimeError(f"Нет economics.by_geo.{geo}.bid_ceiling — ставку нечем ограничить")
-        if bid > cap:
-            raise RuntimeError(f"Ставка ${bid:.2f} выше потолка {geo} ${cap:.2f}")
+            print(f"  ⚠️  нет economics.by_geo.{geo}.bid_ceiling — сверить ставку не с чем")
+        elif bid > cap:
+            print(f"  ⚠️  ставка ${bid:.2f} выше потолка-ориентира {geo} ${cap:.2f}: допустимо, "
+                  "но следи, чтобы фактический CPT не держался выше потолка")
         camp = campaign_for_geo(cfg, geo)
         have = self.existing_names(camp["id"])
         made = []
@@ -85,10 +90,11 @@ if __name__ == "__main__":
     ap.add_argument("--geo", required=True)
     ap.add_argument("--bid", type=float, required=True)
     ap.add_argument("--keywords", required=True, help="Через запятую")
+    ap.add_argument("--max-bid", type=float, help="Явный жёсткий предел ставки (необязательно)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     rows = AdGroupCreator().add_keywords(
-        a.project, a.geo.upper(), a.keywords.split(","), a.bid, a.dry_run)
+        a.project, a.geo.upper(), a.keywords.split(","), a.bid, a.dry_run, a.max_bid)
     for geo, kw, bid, agid in rows:
         print(f"  {geo} {kw[:34]:36} ${bid:.2f}  {agid or ''}")
     print(f"\n{'(dry-run) ' if a.dry_run else ''}создано: {len(rows)}")
