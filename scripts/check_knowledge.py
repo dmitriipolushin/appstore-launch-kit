@@ -90,6 +90,8 @@ SHARED_SCRIPTS = {
     "scripts/asa/utils/geonames.py": "asa/utils/geonames.py",
     "scripts/asa/utils/parsing_data.py": "asa/utils/parsing_data.py",
     "scripts/asa/utils/reports.py": "asa/utils/reports.py",
+    "scripts/asa/bids.py": "asa/bids.py",
+    "scripts/asa/reconcile.py": "asa/reconcile.py",
 }
 n_ok = 0
 for skill in SKILLS:
