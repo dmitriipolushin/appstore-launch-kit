@@ -211,6 +211,9 @@ class PlatformAPI:
         ⚠️ Фильтр countriesOrRegions Apple фактически игнорирует — выдача по
         DE/AT/CH идентична. Popularity не привязана к стране, учитывай это.
         Без `seeds` возвращает общие головные запросы жанра, они бесполезны.
+        ⚠️ Это подсказки по сидам, а не lookup popularity произвольного терма:
+        184 терма-сида дали 42 строки. Терма нет в ответе = нет данных, не «0».
+        Popularity конкретного терма по стране — search_term_popularity(terms=…).
         """
         filters = [
             {"field": "promotedObjectId", "operator": "EQUALS", "value": [str(app_id)]},

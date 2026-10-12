@@ -50,6 +50,14 @@ Priority Score = Relevance × Volume × (1/Competition) × Conversion Potential
 | `getRecommendedKeywords` (`keyword_popularity.py`, cookie/браузер) | 0–100 | см. ниже | нужно — adamId из своей ASA-организации | длинный хвост вокруг seed |
 | `searchPopularity` в Impression Share отчёте | 1–5 | не перепроверено | нужна своя кампания | только ключи кампании |
 
+**Не путать с `/v1/suggestions/keywords/query`** (`platform_api.py --suggest-keywords`).
+Это подсказки Apple по сидам, а не поиск popularity по произвольному терму: на Songria
+184 терма-сида дали 42 строки (2026-10), фильтр страны игнорируется. Нет терма в ответе =
+**нет данных**, а не «ноль». Проверка конкретного терма: (1) `platform_api.py --popularity
+--terms "<терм>" --countries DE` — голова по стране; (2) ниже порога —
+`getRecommendedKeywords` (cookie/браузер, своё приложение в нише); (3) нигде нет, но терм
+есть в hints — завести ключ на $0.80 и смотреть реальные показы.
+
 **1. Search Term Popularity — первый источник для частых запросов.** Официальный эндпоинт
 `POST /v1/insights/apps/search-term-popularity/query`. Проверено 09.2026: значения по
 странам разные (`schrittzähler` — DE 64, AT 52; `kalorienzähler` — AT 69, в DE-топ не
@@ -184,7 +192,7 @@ SEMANTIC THEME (уровень темы)
 | Apple Search Ads suggestions | Высокий | Данные самого Apple из ASA UI; более надёжны чем API searchPopularity |
 | Competitor metadata (title/subtitle/keyword field) | Высокий | Что индексируют лидеры |
 | Competitor paid keywords (ASA) | Высокий | За что конкуренты платят = высокий коммерческий intent |
-| ASA Impression Share (search terms) | Высокий | Показывает реальные запросы, по которым мы показываемся + наш share; кандидаты для EXACT таргетинга |
+| ASA Impression Share / Search Terms Report | Средний (малые гео — низкий) | Реальные запросы, по которым мы показываемся, + наш share. **В малых гео почти весь трафик приходит как `(none)`** — Apple скрывает запросы с малым числом показов: 05–11.10.2026 без текста 84% показов и 54/55 установок в DE, 94–98% и все установки в CH/AT (в BR — 62%). Там это источник негативов, не ключей; ключи — из обхода hints |
 | Already-ranked keywords (own app) | Средний | Quick-win: поднять позицию без смены метаданных |
 | User reviews mining | Средний | Непромпченный язык пользователей → natural search terms |
 | ASA `getRecommendedKeywords` (cookie/браузер) | ⚠️ Ограничен | Отдаёт данные **только для adamId из твоей ASA-организации** и только в тематике этого приложения; adamId конкурента возвращает пустой массив с HTTP 200 (проверено 09.2026). Нет своего приложения в нише → объём хвоста получить неоткуда. Утверждение «не передаёт параметр страны» **не подтверждено**: запрос со `storefronts:['US']` возвращает осмысленные US-значения. Для частых запросов без своего приложения — Search Term Popularity. |
