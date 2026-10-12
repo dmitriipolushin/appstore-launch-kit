@@ -156,13 +156,14 @@ api.add_targeting_keywords(campaign_id, ag_id,
 # ⚠️ DUPLICATE_KEYWORD → ключ уже покрыт close variant'ом, новая кампания не нужна
 ```
 
-## Новые ключи: правило по умолчанию
+## Новые ключи и тест BROAD
 
-1–2 слова → EXACT, 3+ → BROAD; архитектура «1 ключ = 1 адгруппа»; старт $0.80.
-В каждой BROAD-адгруппе — EXACT-негативы текстов всех прочих активных ключей кампании
+По умолчанию — EXACT, архитектура «1 ключ = 1 адгруппа», старт $0.80, подъём ключей без
+показов — `bids.py --step 0.20 --ramp-zero-impressions`, раз в день. BROAD — только как
+согласованный тест (`asa_campaign_architecture.md` → «BROAD — только как отдельный тест»,
+GATE 4): отдельная адгруппа рядом с EXACT, EXACT-негативы всех прочих ключей кампании
 и тематические BROAD-негативы на уровне адгруппы (не кампании: кампанийный BROAD-негатив
-`stimme` заблокировал бы собственный ключ `stimme klonen`). Подъём ключей без показов —
-`bids.py --step 0.20 --ramp-zero-impressions`, раз в день. Всё — только после «да»
+`stimme` заблокировал бы собственный ключ `stimme klonen`). Всё — только после «да»
 пользователя на конкретный список ключей, ставок и негативов.
 
 ```python
@@ -173,14 +174,14 @@ START_BID = 0.80
 THEMATIC_BROAD_NEGATIVES = []
 
 
-def match_type_for(text):
-    return "EXACT" if len(text.split()) <= 2 else "BROAD"
+def add_keyword_adgroup(api, campaign_id, text, bid=START_BID, match_type="EXACT"):
+    """Адгруппа + один ключ. EXACT по умолчанию; "BROAD" — только для согласованного теста.
 
-
-def add_keyword_adgroup(api, campaign_id, text, bid=START_BID):
-    """Адгруппа + один ключ. Повторно не создаёт: имя адгруппы уникально в кампании."""
-    mt = match_type_for(text)
-    name = text if mt == "EXACT" else f"{text} (broad)"
+    Повторно не создаёт: имя адгруппы уникально в кампании. У BROAD своё имя
+    `<фраза> (broad)`, поэтому он встаёт рядом с EXACT-близнецом, а не вместо него.
+    """
+    assert match_type in ("EXACT", "BROAD")
+    name = text if match_type == "EXACT" else f"{text} (broad)"
     if any(a["name"] == name for a in api.get_adgroups(campaign_id)):
         return None
     ag = api.create_adgroup(campaign_id=campaign_id, adgroup_name=name, currency="USD",
@@ -188,7 +189,7 @@ def add_keyword_adgroup(api, campaign_id, text, bid=START_BID):
                             device_class=["IPHONE"])          # старт — сейчас, UTC
     ag_id = ag["data"]["id"]
     api.add_targeting_keywords(campaign_id, ag_id, [{
-        "text": text, "matchType": mt,
+        "text": text, "matchType": match_type,
         "bidAmount": {"amount": f"{bid:.2f}", "currency": "USD"}}])
     return ag_id
 
@@ -201,24 +202,25 @@ def blocks(negative, keyword):
 def sync_broad_negatives(api, campaign_id, thematic=THEMATIC_BROAD_NEGATIVES, dry_run=True):
     """Идемпотентно доводит негативы всех ENABLED BROAD-адгрупп кампании до правила.
 
-    Запускать после каждого добавления ключей: новый EXACT-ключ должен стать
-    EXACT-негативом во всех BROAD-адгруппах. Негативы ключей, поставленных на паузу,
-    не снимает — это отдельное решение.
+    EXACT-негативы — тексты ACTIVE-ключей всех ДРУГИХ адгрупп, включая EXACT-близнеца
+    той же фразы: точный запрос должен уходить в свою EXACT-адгруппу. Запускать после
+    каждого добавления ключей в кампанию. Негативы ключей, поставленных на паузу,
+    не снимает — это отдельное решение. Без BROAD-адгрупп ничего не делает.
     """
     ags = [a for a in api.get_adgroups(campaign_id)
            if a["status"] == "ENABLED" and not a.get("deleted")]
     kws = {a["id"]: [k for k in api.get_targeting_keywords(campaign_id, a["id"])
                      if k["status"] == "ACTIVE" and not k.get("deleted")] for a in ags}
-    active = {k["text"].lower() for ks in kws.values() for k in ks}
     plan = {}
     for a in ags:
         own = [k["text"].lower() for k in kws[a["id"]] if k["matchType"] == "BROAD"]
         if not own:
             continue
+        others = {k["text"].lower() for b, ks in kws.items() if b != a["id"] for k in ks}
         have = {(n["text"].lower(), n["matchType"])
                 for n in api.get_adgroup_negative_keywords(campaign_id, a["id"])["data"]
                 if not n.get("deleted") and n.get("status") == "ACTIVE"}
-        want = [(t, "EXACT") for t in sorted(active - set(own))]
+        want = [(t, "EXACT") for t in sorted(others)]
         want += [(t.lower(), "BROAD") for t in thematic
                  if not any(blocks(t, o) for o in own)]      # свой ключ не блокируем
         add = [{"text": t, "matchType": m} for t, m in want if (t, m) not in have]
@@ -229,8 +231,13 @@ def sync_broad_negatives(api, campaign_id, thematic=THEMATIC_BROAD_NEGATIVES, dr
     return plan        # {адгруппа: [негативы к добавлению]} — показать пользователю
 
 
+# Обычные новые ключи:
 # for kw in new_keywords: add_keyword_adgroup(api, CAMPAIGN_ID, kw)
-# print(sync_broad_negatives(api, CAMPAIGN_ID))                  # план
+# print(sync_broad_negatives(api, CAMPAIGN_ID))                  # если в кампании идёт тест BROAD
+#
+# Тест BROAD (после «да» на план из GATE 4):
+# add_keyword_adgroup(api, CAMPAIGN_ID, "<фраза из 3+ слов>", match_type="BROAD")
+# print(sync_broad_negatives(api, CAMPAIGN_ID))                  # план негативов
 # sync_broad_negatives(api, CAMPAIGN_ID, dry_run=False)          # после «да»
 ```
 
