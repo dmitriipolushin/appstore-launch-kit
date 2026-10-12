@@ -266,10 +266,17 @@ python3 ./skills/aso-collection/scripts/collect_profiles.py --project ./aso-coll
 Зависимости Python-скриптов:
 
 ```bash
-pip install requests python-dotenv PyJWT cryptography authlib pycryptodomex
+python3 -m pip install --user -r requirements.txt
+./install.sh --check   # печатает, какой python3 видит зависимости
 ```
 
 `authlib` и `pycryptodomex` нужны только ASA-скриптам (Apple Ads API).
+
+**Каким интерпретатором запускать.** Тем, который `./install.sh --check` отметил ✓.
+Частая ловушка на macOS: `python3` в PATH — Homebrew-python без пакетов, и скрипт падает
+на `import dotenv`, а системный `/usr/bin/python3` с пакетами работает. Тогда вызывай
+скрипты как `/usr/bin/python3 shared/asa/bids.py …` или заведи venv (команды —
+в `requirements.txt`). `env_setup.py` при нехватке пакетов печатает, что именно делать.
 
 ---
 

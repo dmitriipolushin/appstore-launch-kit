@@ -233,7 +233,7 @@ def upload_metadata_package(app_id, key_id, issuer_id, key_file, locales_data):
 ## Зависимости
 
 ```bash
-pip install PyJWT cryptography requests
+python3 -m pip install --user -r <репозиторий>/requirements.txt   # или только: PyJWT[crypto] requests
 ```
 
 Стандартный `jwt.encode()` из PyJWT 2.x возвращает строку (не байты) — `Authorization: Bearer` работает без `.decode()`.

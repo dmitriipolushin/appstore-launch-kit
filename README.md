@@ -126,8 +126,13 @@ python3 scripts/check_knowledge.py
 
 ```bash
 cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env
-pip install requests python-dotenv PyJWT cryptography authlib pycryptodomex
+python3 -m pip install --user -r requirements.txt
+./install.sh --check      # какой python3 видит зависимости — им и запускать скрипты
 ```
+
+Если `python3` в PATH — Homebrew-python без пакетов (PEP 668 не даст `pip install --user`),
+либо запускай скрипты системным `/usr/bin/python3`, если пакеты стоят там, либо заведи venv:
+`python3 -m venv ~/.venvs/aso && ~/.venvs/aso/bin/pip install -r requirements.txt`.
 
 | Что включает | Ключи | Где взять |
 |---|---|---|
