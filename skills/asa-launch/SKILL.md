@@ -54,7 +54,9 @@ Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читаю
 Возьми из ASO-анализа термины со статусом `gap` или `weak` и tier HIGH/MEDIUM.
 
 Правила отбора:
-- Только EXACT match — BROAD не использовать
+- Тип соответствия по длине ключа: 1–2 слова → EXACT, 3+ слова → BROAD (правило по
+  умолчанию с 2026-10, см. `knowledge/asa_campaign_architecture.md` → «Новые ключи»).
+  Для BROAD обязательны негативы на уровне адгруппы — шаг 5
 - `automatedKeywordsOptIn=False` — Apple иначе добавит свои ключи
 - Исключить брендовые запросы конкурентов если нет явного конкурентного таргетинга
 - Исключить смежные ниши с другим intent (уточни у пользователя)
@@ -118,15 +120,15 @@ print(f"Campaign created: {campaign_id}")
 **Одна adgroup на кампанию.** Search Match выключен, автоподбор ключей выключен, только ручные EXACT-ключи с индивидуальными ставками.
 
 ```python
-start_time = datetime.datetime.utcnow()
-
 adgroup = api.create_adgroup(
     campaign_id=campaign_id,
     adgroup_name="Keywords",
     currency="USD",
     cpc_bid=0.10,  # bid discovery: старт с минимума, см. раздел про ставки
-    start_time=start_time,
+    # start_time не передаём — старт «сейчас» в UTC. Своё время — только aware
+    # (datetime.now(timezone.utc)); наивное datetime create_adgroup отвергает.
     automated_keywords_opt_in=False,  # Search Match OFF — обязательно
+    device_class=["IPHONE"],  # в targetingDimensions уходят только заданные измерения
 )
 adgroup_id = adgroup["data"]["id"]
 ```
@@ -186,7 +188,11 @@ campaign_negatives = [
 api.add_campaign_negative_keywords(campaign_id, campaign_negatives)
 ```
 
-Adgroup-level негативы при работе только на EXACT не нужны: показы идут ровно по выбранным ключам. Они понадобятся, только если когда-нибудь тестируется BROAD.
+Для EXACT-адгрупп adgroup-level негативы не нужны: показы идут ровно по выбранным ключам.
+В каждую BROAD-адгруппу — EXACT-негативы текстов всех прочих активных ключей кампании
+и тематические BROAD-негативы **на уровне адгруппы, не кампании** (кампанийный BROAD-негатив
+`stimme` заблокировал бы собственный ключ `stimme klonen`). Код с dry-run —
+`asa-monitoring/knowledge/api_snippets.md`, «Новые ключи: правило по умолчанию».
 
 ### 6. Проверь что кампания запустилась
 

@@ -176,10 +176,16 @@ from keyword_suggest import expand_seeds
 
 # Всегда подавать PREFIX, не полный термин
 # "pet health t" а не "pet health tracker"
-results = expand_seeds(seed_terms, "us")
-# results: [{term, priority_score, tier}]
-# tier: HIGH (≥5000) / MEDIUM (≥1000) / LOW
+stats = {}
+results = expand_seeds(seed_terms, "us", stats=stats)   # depth=2 — ещё и нишевые подсказки
+# results: [{term, hits, best_position, source, depth, priority_score, tier}]
+# stats["failed"] > 0 → обход неполный, повтори вызов (удачное — из кеша)
 ```
+
+⚠️ `tier`/`priority_score` почти у всех будут HIGH/10000 — это суррогат по позиции,
+сортировать по нему бессмысленно. Порядок важности — `hits`, затем `best_position`.
+Названия приложений (`Suno: AI Music & Song`) уже отсеяны. Темп ~2 запроса/с:
+40+ сидов — это ~20 минут на страну. Подробности — `knowledge/aso_keyword_research.md`.
 
 Сохрани результаты в `./aso-collection/data/keywords/universe_{timestamp}.json`.
 
@@ -341,7 +347,7 @@ python3 ~/.claude/skills/aso-collection/scripts/search_positions.py \
   --project ./aso-collection
 ```
 
-Повтори для топ 10–15 ключей по tier HIGH.
+Повтори для топ 10–15 ключей по Search Popularity (шаг В), а где её нет — по `hits` из hints.
 
 Смотри не только на позиции известных конкурентов — смотри кто вообще в топ-10. Часто обнаруживаются новые конкуренты. Профилируй их сразу.
 

@@ -49,7 +49,7 @@
 |---|---|
 | **[skills/asa-launch](skills/asa-launch/)** | Запуск новой кампании через API: отбор ключей, тематические кластеры вместо одной кампании, стартовые ставки с bid discovery, негативы, organic baseline до старта |
 | **[skills/asa-monitoring](skills/asa-monitoring/)** | Ежедневная и еженедельная оптимизация: метрики по ключам и search terms, триалы из Amplitude, Impression Share, gate-проверки перед каждым решением, ставки и паузы, changelog изменений, organic vs paid по данным ASC |
-| **[shared/asa/](shared/asa/)** | Общий ASA-тулкит обоих скиллов. `platform_api.py` — Apple Ads Platform API: официальная Search Popularity по стране и жанру (без cookie и без своего приложения в нише), подсказки ключей. `bids.py` — точечный подъём ставок, `adgroups.py` — создание адгрупп |
+| **[shared/asa/](shared/asa/)** | Общий ASA-тулкит обоих скиллов. `platform_api.py` — Apple Ads Platform API: официальная Search Popularity по стране и жанру (без cookie и без своего приложения в нише), подсказки ключей. `bids.py` — подъём ставок (только вверх, только ACTIVE-ключи, идемпотентно; отчёт «ставка / потолок-ориентир / фактический CPT»), `adgroups.py` — создание адгрупп, `reconcile.py` — сверка кабинета с учётом проекта (неучтённые кампании, адгруппы без активных ключей, правки после changelog) |
 
 ### Общее
 
@@ -80,7 +80,7 @@ git clone git@github.com:dmitriipolushin/appstore-launch-kit.git && cd appstore-
 одна и та же ошибка жила в четырёх версиях. Теперь:
 
 ```
-knowledge/                       ← единственный источник правды, 8 файлов
+knowledge/                       ← единственный источник правды (теория ASO + архитектура ASA)
 skills/<skill>/knowledge/
     aso_algorithms.md            → симлинк на ../../../knowledge/
     aso_creatives.md             → симлинк
@@ -90,12 +90,12 @@ skills/<skill>/knowledge/
     aso_keyword_research.md      → симлинк
     aso_theory_base.md           → симлинк ИЛИ своя версия, если что-то добавляет
     aso_metrics_iteration.md     → симлинк ИЛИ своя версия
-    asa_campaign_architecture.md ← только у ASA-скиллов
+    asa_campaign_architecture.md → симлинк (только у ASA-скиллов)
     api_snippets.md              ← только у asa-monitoring
     decision_gates.md            ← только у asa-monitoring
 ```
 
-Первые шесть файлов правятся **только** в `knowledge/`. Последние два допускают
+Первые шесть файлов и `asa_campaign_architecture.md` правятся **только** в `knowledge/`. Последние два допускают
 свою версию в скилле, если она добавляет содержание (у ASA-скиллов там разделы
 про архитектуру кампаний, Impression Share и IPM) — но не ради простой копии.
 
@@ -105,7 +105,7 @@ skills/<skill>/knowledge/
 - `env_setup.py`, `keyword_suggest.py`, `collect_profiles.py`, `project_config.py`,
   `keyword_popularity.py` — общие для ASO/ASA-скиллов
 - `asa/` — тулкит Apple Search Ads (`platform_api.py`, `bids.py`, `adgroups.py`,
-  `logic.py`, `settings.py`, `utils/*`), общий для `asa-launch` и `asa-monitoring`
+  `reconcile.py`, `logic.py`, `settings.py`, `utils/*`), общий для `asa-launch` и `asa-monitoring`
 
 Пофайлово оставлен только `search_positions.py`: у версий разный CLI-контракт
 (`--app-ids` со списком против `--app-id` для одного приложения).
@@ -126,8 +126,13 @@ python3 scripts/check_knowledge.py
 
 ```bash
 cp config/api_keys.env.example ~/.config/aso-tools/api_keys.env
-pip install requests python-dotenv PyJWT cryptography authlib pycryptodomex
+python3 -m pip install --user -r requirements.txt
+./install.sh --check      # какой python3 видит зависимости — им и запускать скрипты
 ```
+
+Если `python3` в PATH — Homebrew-python без пакетов (PEP 668 не даст `pip install --user`),
+либо запускай скрипты системным `/usr/bin/python3`, если пакеты стоят там, либо заведи venv:
+`python3 -m venv ~/.venvs/aso && ~/.venvs/aso/bin/pip install -r requirements.txt`.
 
 | Что включает | Ключи | Где взять |
 |---|---|---|

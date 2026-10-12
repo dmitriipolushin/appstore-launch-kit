@@ -71,47 +71,64 @@ Discovery через обёртку молча выключала Search Match. 
 адгруппам. Шаг применится дважды, в кабинете будут ставки, которых никто не
 согласовывал.
 
-Три правила, которые это закрывают:
+Правила, которые это закрывают:
+
+- **Цель — от фактической ставки КЛЮЧА в кабинете**, не от конфига и не от default bid адгруппы.
+- **План прогона пишется до первой записи** (было → станет по каждому ключу) и
+  статус обновляется после каждого ключа. Повторный запуск продолжает ЭТОТ план:
+  ключ уже на цели пропускается, на базе — применяется, иначе — конфликт (ставку
+  меняли руками) и пропуск. Шаг второй раз не прибавляется.
+- **Только вверх.** Массовая правка никогда не понижает ставку. Понижение — отдельное
+  точечное решение по GATE 3, не побочный эффект шага.
+- **Только ACTIVE-ключи** в ENABLED-адгруппах ENABLED-кампаний. Не «первый ключ
+  адгруппы»: он может быть PAUSED.
+- **Default bid адгруппы** подтягивается до ставки ключа, только вверх, без
+  `automatedKeywordsOptIn` в теле.
+- **Потолок не обрезает ставку.** `economics.by_geo.*.bid_ceiling` — ориентир
+  (см. `decision_gates.md`, «Потолок ставки»): отчёт показывает его рядом с
+  фактическим CPT и помечает `CPT > потолка`. Жёсткий предел — только явный `--max-bid`.
 
 ```python
-# 1. Цель — от ФАКТИЧЕСКОЙ ставки в кабинете
-live = {a["id"]: float(a["defaultBidAmount"]["amount"])
-        for a in api.get_adgroups(campaign_id)}
-
-for ag in adgroups:
-    cur = live[ag["id"]]
-    new = round(min(cur + STEP, BID_CEILING[geo]), 2)
-    if abs(new - cur) < 1e-6:          # 2. уже применено — пропустить
+# Суть — не копировать, использовать scripts/asa/bids.py
+for kw in active_keywords:                     # status == ACTIVE, адгруппа ENABLED
+    new = round(kw.bid + STEP, 2)
+    if MAX_BID is not None:
+        new = min(new, MAX_BID)                # только если пользователь задал предел
+    if new <= kw.bid:                          # никогда не понижаем
         continue
-    api.update_adgroup(campaign_id, ag["id"], cpc_bid=new, currency="USD")
-    api.update_targeting_keywords(campaign_id, ag["id"],
-        [{"id": ag["kw_id"], "bidAmount": {"amount": f"{new:.2f}", "currency": "USD"}}])
-    ag["bid"] = new
-    save_config(cfg)                    # 3. сохранять после КАЖДОЙ адгруппы
+    plan.append((kw, kw.bid, new))             # пишется в data/bid_runs/ ДО записи
 ```
 
-- **Цель от кабинета, а не от конфига** — повторный запуск идемпотентен.
-- **Пропуск уже применённого** — сравнение с текущей ставкой, не слепой PUT.
-- **Сохранение после каждой адгруппы**, а не после кампании — иначе обрыв
-  теряет учёт по всей кампании и конфиг расходится с кабинетом.
-
-Готовая реализация — `shared/asa/bids.py`, использовать её, а не писать заново:
+Готовая реализация — `scripts/asa/bids.py` (в репозитории — `shared/asa/bids.py`), использовать её, а не писать заново:
 
 ```bash
-python3 shared/asa/bids.py --project {путь_проекта} --step 0.30 --dry-run
-python3 shared/asa/bids.py --project {путь_проекта} --step 0.30
+# отчёт без изменений: ставка, потолок, фактический CPT за 7 дней, флаги
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --report
+# ежедневный подъём ключей без показов (bid discovery): +$0.20 тем, у кого 0 показов вчера
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions --dry-run
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions
+# шаг всем ACTIVE-ключам гео, с явным жёстким пределом
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.30 --geos CH --max-bid 4.00
 ```
 
-Потолки берутся из `economics.by_geo.*.bid_ceiling` конфига проекта.
+`--ramp-zero-impressions --days N` поднимает только ключи с 0 показов за N полных дней
+(UTC, до вчера включительно); ключи, созданные внутри окна, ждут следующего дня.
+В отчёте — кандидаты на паузу: 0 показов 3+ дня при ставке ≥ потолка (или ≥ `--max-bid`).
+Паузу модуль не ставит — это решение пользователя по GATE 3.
 
-Плюс ретраи на сетевые обрывы: `api_call` в `shared/asa/utils/asa_api.py`
-повторяет запрос лишь дважды и не различает типы ошибок, поэтому для батч-правок
-оборачивай вызовы своим ретраем с нарастающей паузой.
+Повторный запуск в тот же день с теми же параметрами продолжает план из
+`data/bid_runs/<дата>_<режим>_step<шаг>_<гео>.json`; ещё один шаг в тот же день — `--new-run`.
 
-> Источник правила: инцидент 2026-09-11 на проекте Songria. Обрыв соединения на
+`api_call` в `shared/asa/utils/asa_api.py` ходит с таймаутом 60 с и повторяет только
+чтение (GET, `reports/*`, `*/find`) на обрыв, таймаут, 429 и 5xx. Запись (POST/PUT/DELETE)
+делается одной попыткой: таймаут записи — ошибка «запись могла примениться, перечитай
+кабинет», а не слепой повтор. Клиент `bids.ASA` ретраит и записи — он сверяет цель
+с кабинетом, поэтому повтор там безопасен; для своих батч-правок бери его.
+
+> Источник правила: инцидент 2026-09-11 на реальном проекте. Обрыв соединения на
 > третьей кампании из трёх; первые две успели записать конфиг, повторный прогон
 > поднял им ставки второй раз — +$0.60 вместо +$0.30 по 46 адгруппам.
-> Рабочая реализация: `scripts/asa_common.py` в папке того проекта.
+> Рабочая реализация — `scripts/asa/bids.py` (скриптов в папках проектов нет).
 
 ## Пауза
 
@@ -139,6 +156,84 @@ api.add_targeting_keywords(campaign_id, ag_id,
 # ⚠️ DUPLICATE_KEYWORD → ключ уже покрыт close variant'ом, новая кампания не нужна
 ```
 
+## Новые ключи: правило по умолчанию
+
+1–2 слова → EXACT, 3+ → BROAD; архитектура «1 ключ = 1 адгруппа»; старт $0.80.
+В каждой BROAD-адгруппе — EXACT-негативы текстов всех прочих активных ключей кампании
+и тематические BROAD-негативы на уровне адгруппы (не кампании: кампанийный BROAD-негатив
+`stimme` заблокировал бы собственный ключ `stimme klonen`). Подъём ключей без показов —
+`bids.py --step 0.20 --ramp-zero-impressions`, раз в день. Всё — только после «да»
+пользователя на конкретный список ключей, ставок и негативов.
+
+```python
+START_BID = 0.80
+# Тематические BROAD-негативы для BROAD-адгрупп — список согласовать с пользователем.
+# Пусто по умолчанию: это чужой интент, который BROAD-ключи начинают ловить, — свой
+# у каждой ниши. Пример для музыкального приложения: ["stimme", "garageband", "fl studio"].
+THEMATIC_BROAD_NEGATIVES = []
+
+
+def match_type_for(text):
+    return "EXACT" if len(text.split()) <= 2 else "BROAD"
+
+
+def add_keyword_adgroup(api, campaign_id, text, bid=START_BID):
+    """Адгруппа + один ключ. Повторно не создаёт: имя адгруппы уникально в кампании."""
+    mt = match_type_for(text)
+    name = text if mt == "EXACT" else f"{text} (broad)"
+    if any(a["name"] == name for a in api.get_adgroups(campaign_id)):
+        return None
+    ag = api.create_adgroup(campaign_id=campaign_id, adgroup_name=name, currency="USD",
+                            cpc_bid=bid, automated_keywords_opt_in=False,
+                            device_class=["IPHONE"])          # старт — сейчас, UTC
+    ag_id = ag["data"]["id"]
+    api.add_targeting_keywords(campaign_id, ag_id, [{
+        "text": text, "matchType": mt,
+        "bidAmount": {"amount": f"{bid:.2f}", "currency": "USD"}}])
+    return ag_id
+
+
+def blocks(negative, keyword):
+    """BROAD-негатив блокирует запрос, содержащий все его слова (в любом порядке)."""
+    return set(negative.lower().split()) <= set(keyword.lower().split())
+
+
+def sync_broad_negatives(api, campaign_id, thematic=THEMATIC_BROAD_NEGATIVES, dry_run=True):
+    """Идемпотентно доводит негативы всех ENABLED BROAD-адгрупп кампании до правила.
+
+    Запускать после каждого добавления ключей: новый EXACT-ключ должен стать
+    EXACT-негативом во всех BROAD-адгруппах. Негативы ключей, поставленных на паузу,
+    не снимает — это отдельное решение.
+    """
+    ags = [a for a in api.get_adgroups(campaign_id)
+           if a["status"] == "ENABLED" and not a.get("deleted")]
+    kws = {a["id"]: [k for k in api.get_targeting_keywords(campaign_id, a["id"])
+                     if k["status"] == "ACTIVE" and not k.get("deleted")] for a in ags}
+    active = {k["text"].lower() for ks in kws.values() for k in ks}
+    plan = {}
+    for a in ags:
+        own = [k["text"].lower() for k in kws[a["id"]] if k["matchType"] == "BROAD"]
+        if not own:
+            continue
+        have = {(n["text"].lower(), n["matchType"])
+                for n in api.get_adgroup_negative_keywords(campaign_id, a["id"])["data"]
+                if not n.get("deleted") and n.get("status") == "ACTIVE"}
+        want = [(t, "EXACT") for t in sorted(active - set(own))]
+        want += [(t.lower(), "BROAD") for t in thematic
+                 if not any(blocks(t, o) for o in own)]      # свой ключ не блокируем
+        add = [{"text": t, "matchType": m} for t, m in want if (t, m) not in have]
+        if add:
+            plan[a["name"]] = add
+            if not dry_run:
+                api.add_adgroup_negative_keywords(campaign_id, a["id"], add)
+    return plan        # {адгруппа: [негативы к добавлению]} — показать пользователю
+
+
+# for kw in new_keywords: add_keyword_adgroup(api, CAMPAIGN_ID, kw)
+# print(sync_broad_negatives(api, CAMPAIGN_ID))                  # план
+# sync_broad_negatives(api, CAMPAIGN_ID, dry_run=False)          # после «да»
+```
+
 ## Negative keyword
 
 ```python
@@ -149,8 +244,6 @@ api.add_campaign_negative_keywords(campaign_id,
 ## Создать новую кампанию
 
 ```python
-from datetime import datetime
-
 data = {
     "orgId": api.org_id,
     "name": "PS — keyword name",
@@ -167,9 +260,9 @@ camp_id = camp["data"]["id"]
 
 ag = api.create_adgroup(
     campaign_id=camp_id, adgroup_name="Keywords", currency="USD",
-    cpc_bid=BID, start_time=datetime.now(),
+    cpc_bid=BID,   # start_time по умолчанию — сейчас, UTC; наивное datetime → ValueError
     automated_keywords_opt_in=False, device_class=["IPHONE", "IPAD"],
-)
+)   # targetingDimensions = только переданные измерения (здесь deviceClass)
 ag_id = ag["data"]["id"]
 
 api.add_targeting_keywords(camp_id, ag_id,

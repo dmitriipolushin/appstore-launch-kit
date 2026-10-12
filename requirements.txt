@@ -1,0 +1,13 @@
+# Зависимости Python-скриптов кита (shared/, skills/*/scripts/). Сверено с импортами 2026-10.
+#
+# Ставить в ТОТ интерпретатор, которым запускаются скрипты:
+#   python3 -m pip install --user -r requirements.txt
+# Homebrew-python (PEP 668) так не даст — заведи venv:
+#   python3 -m venv ~/.venvs/aso && ~/.venvs/aso/bin/pip install -r requirements.txt
+# Какой интерпретатор рабочий — ./install.sh --check
+
+requests>=2.28           # все HTTP-клиенты: Apple Ads, Search Hints, iTunes, AppStoreSpy
+python-dotenv>=1.0       # shared/env_setup.py: чтение ~/.config/aso-tools/api_keys.env
+authlib>=1.2             # Apple Ads API: client secret (asa_api.py, platform_api.py)
+pycryptodomex>=3.15      # Apple Ads API: EC-ключ (модуль Cryptodome)
+PyJWT[crypto]>=2.6       # App Store Connect (ES256): asc-metadata, asc_fetch_analytics, aso-monitoring

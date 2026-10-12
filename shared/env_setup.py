@@ -1,7 +1,19 @@
 """Shared config loader for ASO tools. Import this before using any API keys."""
 import os
+import sys
 from pathlib import Path
-from dotenv import dotenv_values
+
+try:
+    from dotenv import dotenv_values
+except ImportError:
+    _req = Path(__file__).resolve().parents[1] / "requirements.txt"
+    raise SystemExit(
+        f"В интерпретаторе {sys.executable} нет python-dotenv (и, скорее всего, остальных "
+        f"зависимостей кита).\n"
+        f"  установить:  {sys.executable} -m pip install --user -r {_req}\n"
+        f"  или запустить тем python3, где пакеты уже стоят (часто /usr/bin/python3 на macOS).\n"
+        f"  проверить:   {_req.parent / 'install.sh'} --check"
+    )
 
 CONFIG_DIR = Path.home() / ".config" / "aso-tools"
 ENV_FILE = CONFIG_DIR / "api_keys.env"

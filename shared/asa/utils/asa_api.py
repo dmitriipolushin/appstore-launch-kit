@@ -151,6 +151,35 @@ class SearchAdsAPI:
 
     # API Function
 
+    # Без таймаута один зависший ответ Apple вешал весь asa_fetch навсегда.
+    timeout = 60
+    read_retries = 4
+
+    def _send(self, caller, method, url, api_endpoint, kwargs):
+        """Запрос с таймаутом. Чтение (GET, reports/*, */find) повторяется на
+        обрыв, таймаут, 429 и 5xx с нарастающей паузой. Запись — одна попытка:
+        повтор POST/PUT после таймаута мог бы применить правку дважды."""
+        ep = api_endpoint.strip("/")
+        readonly = method == "GET" or ep.startswith("reports/") or ep.endswith("/find") \
+            or ep == "campaigns/find"
+        tries = self.read_retries if readonly else 1
+        kwargs = dict(kwargs, timeout=self.timeout)
+        for attempt in range(tries):
+            try:
+                req = getattr(caller, method.lower())(url, **kwargs)
+            except (requests.Timeout, requests.ConnectionError) as e:
+                if attempt == tries - 1:
+                    if readonly:
+                        raise RuntimeError(f"{method} {ep}: нет ответа после {tries} попыток ({e})") from e
+                    raise RuntimeError(
+                        f"{method} {ep}: нет ответа за {self.timeout} с ({type(e).__name__}). "
+                        "Запись могла примениться — перечитай кабинет перед повтором.") from e
+            else:
+                if not (readonly and (req.status_code == 429 or req.status_code >= 500)) \
+                        or attempt == tries - 1:
+                    return req
+            time.sleep(min(30, 2 * 2 ** attempt))
+
     def api_call(
         self,
         api_endpoint="",
@@ -218,14 +247,7 @@ class SearchAdsAPI:
             kwargs["params"].update(params)
             path = f"{self.api_version}/{api_endpoint}"
             url = f"https://api.searchads.apple.com/api/{path}"
-            if method.upper() == "GET":
-                req = caller.get(url, **kwargs)
-            elif method.upper() == "POST":
-                req = caller.post(url, **kwargs)
-            elif method.upper() == "PUT":
-                req = caller.put(url, **kwargs)
-            elif method.upper() == "DELETE":
-                req = caller.delete(url, **kwargs)
+            req = self._send(caller, method.upper(), url, api_endpoint, kwargs)
 
             if self.verbose:
                 print(req.status_code)
@@ -424,13 +446,23 @@ class SearchAdsAPI:
 
     # Adgroup Methods
 
+    @staticmethod
+    def _utc_timestamp(value, name):
+        """aware datetime → строка UTC для API (`2026-10-12T08:42:27.441`)."""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(
+                f"{name}: наивное datetime ({value}) — непонятно, в каком поясе. "
+                "Передай aware-время, например datetime.now(timezone.utc)."
+            )
+        return value.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+
     def create_adgroup(
         self,
         campaign_id,
         adgroup_name,
         currency,
         cpc_bid,
-        start_time,
+        start_time=None,
         end_time=None,
         cpa_goal=None,
         automated_keywords_opt_in=False,
@@ -510,24 +542,18 @@ class SearchAdsAPI:
              "error": null
          }
         """
-        dimensions = {}
-        if (
-            gender is not None
-            or device_class is not None
-            or day_part is not None
-            or adminArea is not None
-            or locality is not None
-            or appDownloaders is not None
-        ):
-            dimensions = {
-                "age": {"included": age},
-                "gender": {"included": gender},
-                "deviceClass": {"included": device_class},
-                "daypart": {"userTime": {"included": day_part}},
-                "adminArea": {"included": adminArea},
-                "locality": {"included": locality},
-                "appDownloaders": appDownloaders,
-            }
+        # В targetingDimensions — только заданные измерения. Раньше при одном
+        # device_class=['IPHONE'] уходили age/gender/daypart/... с included=None.
+        dims = {
+            "age": None if age is None else {"included": age},
+            "gender": None if gender is None else {"included": gender},
+            "deviceClass": None if device_class is None else {"included": device_class},
+            "daypart": None if day_part is None else {"userTime": {"included": day_part}},
+            "adminArea": None if adminArea is None else {"included": adminArea},
+            "locality": None if locality is None else {"included": locality},
+            "appDownloaders": appDownloaders,
+        }
+        dimensions = {k: v for k, v in dims.items() if v is not None}
 
         data = {
             "campaignId": campaign_id,
@@ -540,10 +566,13 @@ class SearchAdsAPI:
         }
         if cpa_goal is not None:
             data["cpaGoal"] = {"amount": "{}".format(cpa_goal), "currency": currency}
-        if start_time is not None:
-            data["startTime"] = start_time.strftime("%Y-%m-%dT%H:%M:%S.%f")
+        # Время для API — UTC. По умолчанию старт «сейчас»; наивное datetime
+        # (datetime.now() без tz) — ошибка: это локальное время, и адгруппа
+        # стартовала бы со сдвигом на часовой пояс машины.
+        data["startTime"] = self._utc_timestamp(
+            start_time or datetime.datetime.now(datetime.timezone.utc), "start_time")
         if end_time is not None:
-            data["endTime"] = end_time.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            data["endTime"] = self._utc_timestamp(end_time, "end_time")
         res = self.api_call(
             "campaigns/{}/adgroups".format(campaign_id), json_data=data, method="POST"
         )
@@ -2159,14 +2188,19 @@ class SearchAdsAPI:
                 return None
             if res["data"]["reportingDataResponse"] is None:
                 return None
-            row.extend(res["data"]["reportingDataResponse"]["row"])
-            if return_grand_totals:
-                grandTotals.extend(res["data"]["reportingDataResponse"]["grandTotals"])
+            # Кампания без данных за период (например, пауза с первого дня)
+            # приходит без grandTotals, а иногда и без pagination — это не ошибка.
+            rdr = res["data"]["reportingDataResponse"]
+            page = rdr.get("row") or []
+            row.extend(page)
+            if return_grand_totals and rdr.get("grandTotals"):
+                gt = rdr["grandTotals"]
+                grandTotals.extend(gt if isinstance(gt, list) else [gt])
             res_len = len(row)
 
             offset = len(row)
-            # print(limit)
-            if res_len == limit or res_len >= res["pagination"]["totalResults"]:
+            total = (res.get("pagination") or {}).get("totalResults", res_len)
+            if not page or res_len == limit or res_len >= total:
                 break
         if return_grand_totals:
             return row, grandTotals

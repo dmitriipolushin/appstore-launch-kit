@@ -20,6 +20,9 @@ SKILLS = ["aso-collection", "aso-monitoring", "asa-launch", "asa-monitoring"]
 # Строго общие: внутри скилла обязаны быть симлинком на knowledge/
 SHARED = ["aso_algorithms.md", "aso_creatives.md", "aso_foundations.md",
           "aso_social_signals.md", "aso_metadata.md", "aso_keyword_research.md"]
+# Строго общие только для ASA-скиллов: у ASO-скиллов их нет вовсе.
+ASA_SKILLS = ["asa-launch", "asa-monitoring"]
+SHARED_ASA = ["asa_campaign_architecture.md"]
 # Общие с правом override: симлинк по умолчанию, но скилл может держать
 # свою версию, если у неё есть содержательные добавления (например ASA-разделы).
 OVERRIDABLE = ["aso_theory_base.md", "aso_metrics_iteration.md"]
@@ -32,7 +35,7 @@ for skill in SKILLS:
     if not kdir.is_dir():
         print(f"  ⚠️  нет каталога {kdir.relative_to(REPO)}")
         continue
-    for name in SHARED:
+    for name in SHARED + (SHARED_ASA if skill in ASA_SKILLS else []):
         p = kdir / name
         if not p.exists() and not p.is_symlink():
             print(f"  ✗ отсутствует       {skill}/{name}")
@@ -45,7 +48,8 @@ for skill in SKILLS:
             print(f"  ✗ битый симлинк     {skill}/{name} → {p.readlink()}")
             fail = True
 if not fail:
-    print(f"  ✓ все {len(SKILLS) * len(SHARED)} симлинков на месте и резолвятся")
+    n = len(SKILLS) * len(SHARED) + len(ASA_SKILLS) * len(SHARED_ASA)
+    print(f"  ✓ все {n} симлинков на месте и резолвятся")
 
 print("\n── общие с override: своя версия допустима, если что-то добавляет")
 for name in OVERRIDABLE:
@@ -90,6 +94,10 @@ SHARED_SCRIPTS = {
     "scripts/asa/utils/geonames.py": "asa/utils/geonames.py",
     "scripts/asa/utils/parsing_data.py": "asa/utils/parsing_data.py",
     "scripts/asa/utils/reports.py": "asa/utils/reports.py",
+    "scripts/asa/platform_api.py": "asa/platform_api.py",
+    "scripts/asa/adgroups.py": "asa/adgroups.py",
+    "scripts/asa/bids.py": "asa/bids.py",
+    "scripts/asa/reconcile.py": "asa/reconcile.py",
 }
 n_ok = 0
 for skill in SKILLS:
@@ -109,7 +117,7 @@ print(f"  ✓ {n_ok} симлинков на shared/ на месте")
 
 print("\n── лишние копии общих файлов вне knowledge/")
 strays = [p for p in (REPO / "skills").rglob("*.md")
-          if p.name in SHARED and p.is_file() and not p.is_symlink()]
+          if p.name in SHARED + SHARED_ASA and p.is_file() and not p.is_symlink()]
 if strays:
     for p in strays:
         print(f"  ✗ {p.relative_to(REPO)}")

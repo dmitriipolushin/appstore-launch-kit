@@ -38,6 +38,14 @@ Amplitude подключается как MCP-сервер, отдельного
 Если чего-то не хватает — не угадывать значения, а сказать пользователю, какой переменной нет
 и куда её взять (описано в `config/api_keys.env.example` в репозитории скиллов).
 
+**Интерпретатор.** Скрипты нужно запускать тем `python3`, где стоят пакеты из
+`requirements.txt` репозитория (requests, python-dotenv, authlib, pycryptodomex, PyJWT).
+Какой это — печатает `./install.sh --check` в репозитории. На macOS `python3` в PATH часто
+оказывается Homebrew-python без пакетов (`ModuleNotFoundError: dotenv`), а системный
+`/usr/bin/python3` с пакетами работает — тогда все команды ниже вызывай через `/usr/bin/python3`.
+Ставить пакеты в чужой интерпретатор без спроса не надо: скажи пользователю команду из
+`requirements.txt`.
+
 ## Структура данных
 
 Данные хранятся в накопительных файлах — каждый вызов **дополняет**, не перезаписывает.
@@ -74,6 +82,28 @@ ASC-конфиг: `./ASO/config/asc_config.env` (ASC_KEY_ID, ASC_ISSUER_ID, ASC_
 - `~/.claude/skills/asa-monitoring/knowledge/aso_metrics_iteration.md` — organic multiplier, каннибализация
 
 Прочитай последние записи в `./ASA/asa_changelog.md` для контекста предыдущих изменений.
+
+### Сверка кабинета с учётом проекта (каждую сессию, до шага 1)
+
+```bash
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/reconcile.py --project {папка проекта}
+```
+
+Только чтение. Конфиг проекта (`config/campaigns_v2.json`) и README видят не всё, что
+есть в кабинете. Скрипт показывает три вещи:
+
+1. **Все кампании аккаунта** с отметкой `НЕ УЧТЕНА` у тех, чьих id/имени нет ни в
+   конфиге, ни в README. ENABLED неучтённая кампания тратит деньги мимо анализа —
+   спроси пользователя, чья она, и внеси в README/конфиг (типичный случай: глобальная
+   кампания на конкурентов или тест новой страны, заведённые в обход проекта).
+2. **ENABLED-адгруппы, у которых все ключи PAUSED.** В интерфейсе они выглядят
+   работающими, а показов нет. Предложи паузу адгруппы или включение ключа.
+3. **Изменения после последней записи changelog** (`modificationTime` кампаний,
+   адгрупп, ключей). Правки того же дня выводятся отдельно — сверь их с записью;
+   более поздние — правки руками в кабинете или незаписанная сессия: выясни и запиши.
+   Своя дата — `--since YYYY-MM-DD`.
+
+Найденное покажи пользователю вместе с данными Этапа 1; сам ничего не меняй.
 
 ## Принцип оценки ключей
 
@@ -196,6 +226,8 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_analyze.py \
 #### Шаг 6 — После подтверждения: Выполнение + Запись в changelog
 
 1. Выполнить через API (сниппеты в `api_snippets.md`):
+   - Подъём ставок пачкой — только `scripts/asa/bids.py` (сначала `--dry-run`): только вверх,
+     только ACTIVE-ключи, повтор после обрыва не задваивает шаг
    - ⚠️ Верифицировать adgroup_id через `api.get_adgroups(campaign_id)` перед keyword-операциями
    - После bid raise — обновить adgroup default CPT bid = максимальная keyword bid
    - У Discovery (Search Match) ставка — это default bid адгруппы. Правка адгруппы не должна
@@ -249,19 +281,34 @@ multiplier = organic / asa_installs
 
 ### Расширение ключей
 
+**Откуда брать ключи (по убыванию пользы для малых гео):**
+
+1. **Обход автоподсказок App Store** — основной рабочий путь. Сиды — свои ключи с показами,
+   слова из title/subtitle конкурентов; `--depth 2` раскрывает нишевые подсказки.
+   ~2 запроса/с, ~20 минут на страну для 40+ сидов; прерванный обход продолжается из кеша.
+2. **Search Popularity** по найденным термам (`platform_api.py --popularity --terms …`) —
+   только голова; ниже порога — путь проверки конкретного терма ниже.
+3. **Search Terms Report — НЕ источник ключей в малых гео.** В DE/AT/CH почти весь трафик
+   приходит с текстом `(none)`: Apple скрывает запросы с малым числом показов. Замер
+   05–11.10.2026: без текста запроса 84% показов и 54 из 55 установок в DE, 94% и 25 из 25
+   в CH, 98% и 12 из 12 в AT (в BR — 62%). Search terms годятся для негативов
+   (чужой интент среди названных запросов), но не для поиска новых ключей.
+
 **Search Hints:**
 ```bash
 python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
   --term "ki scan" --country de
+python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
+  --seeds "kalorien,schrittzähler,diät plan" --country de --depth 2 --out hints_de.json
 ```
-Tier HIGH = позиции 1–5 в autocomplete.
+Тир HIGH по hints не информативен (суррогат по позиции, почти у всех 10000) — смотри `hits` и Search Popularity. Сбойные запросы считаются в итоге (`НЕУДАЧНЫХ N`, код выхода 3), повтор команды дозапрашивает только их.
 
 **ASA Popularity:**
 ```bash
 python3 ~/.claude/skills/asa-monitoring/scripts/asa/keyword_popularity.py \
   --seeds "keyword1,keyword2" --storefronts DE
 ```
-Hints HIGH + pop ≥ 5 → добавить EXACT с bid $0.80 (discovery). ASA pop ≥ 20 → уверенный сигнал.
+Терм есть в hints + pop ≥ 5 → добавить по правилу новых ключей (ниже). ASA pop ≥ 20 → уверенный сигнал.
 Cookie истекает ~24ч. При 401 — обновить `APPLE_SA_COOKIE` в `~/.config/aso-tools/api_keys.env`.
 
 **Apple Ads Platform API — подсказки ключей с popularity (без cookie).**
@@ -270,8 +317,8 @@ Cookie истекает ~24ч. При 401 — обновить `APPLE_SA_COOKIE`
 popularity 0-100 по своему приложению. Cookie не нужен, авторизация обычная.
 
 ```bash
-python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
-    --seeds "ki song,suno,ai song" --country DE
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
+    --seeds "kalorien,schrittzähler,diät" --country DE
 ```
 
 Без `--seeds` вернёт общие головные запросы жанра (youtube, spotify) — бесполезно.
@@ -280,15 +327,25 @@ python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
 ⚠️ Фильтр `countriesOrRegions` Apple игнорирует: DE/AT/CH возвращают идентичные
 списки, popularity не привязана к стране.
 
+⚠️ **Это подсказки, а не поиск popularity по произвольному терму.** Apple возвращает
+только то, что сам считает подсказкой по сидам: на реальном проекте 184 терма-сида дали 42 строки.
+Отсутствие терма в ответе = **нет данных**, а не «popularity 0». Проверка конкретного терма:
+1. `platform_api.py --popularity --terms "<терм>" --countries DE` — официальная popularity
+   по стране, но только голова (в DE порог ≈ 49); нет в выдаче = ниже порога;
+2. ниже порога — cookie-способ `keyword_popularity.py` / JS из `aso-collection/SKILL.md`
+   шаг 4В2 (длинный хвост, нужно своё приложение в нише);
+3. нигде нет — терм в hints? Тогда завести ключ по правилу новых ключей и смотреть
+   показы: реальные impressions — единственный точный сигнал объёма в малых гео.
+
 Там же — официальный топ-500 запросов на жанр на страну:
 
 ```bash
 # Проверить свои ключи (регистр не важен); без --month — последний опубликованный месяц
-python3 shared/asa/platform_api.py --popularity --countries DE,AT --terms "schrittzähler,kalorienzähler"
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries DE,AT --terms "schrittzähler,kalorienzähler"
 # Топ жанра / запросы со словом / понедельный срез
-python3 shared/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS --out pop.csv
-python3 shared/asa/platform_api.py --popularity --countries US --contains song
-python3 shared/asa/platform_api.py --popularity --week 2026-09-13 --countries DE --genre PHOTO_VIDEO
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS --out pop.csv
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries US --contains song
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --week 2026-09-13 --countries DE --genre PHOTO_VIDEO
 ```
 
 Не привязан к своему приложению и честно разбит по странам. Покрытие — только
@@ -322,18 +379,37 @@ python3 ~/.claude/skills/aso-collection/scripts/search_positions.py \
 ## Структурные правила
 
 **Это правила по умолчанию, а не догма.** Если `README.md` проекта или changelog фиксирует
-другую архитектуру (решение владельца) — работай в ней и не предлагай «привести к стандарту»
+другую архитектуру (решение владельца приложения) — работай в ней и не предлагай «привести к стандарту»
 без новых данных. Примеры отклонений, которые встречаются: BROAD-ключи на смысловой кластер,
 Discovery-адгруппа с Search Match внутри основной кампании, много адгрупп «1 ключ = 1 адгруппа»
 в одной кампании на гео. Тогда Discovery и BROAD оцениваются по тем же gates, что и EXACT,
 плюс их search terms — источник новых ключей и негативов.
 
 По умолчанию:
-- Только EXACT match, Search Match (`automatedKeywordsOptIn`) выключен — Discovery-adgroup не используется
+- Search Match (`automatedKeywordsOptIn`) выключен — Discovery-adgroup не используется
 - 1 ключ = 1 кампания (бюджетная изоляция + точный CPTrial)
-- Bid discovery: старт $0.80, +$0.20 каждые ~2 часа, пока impressions = 0
+
+**Новые ключи — правило по умолчанию** (по умолчанию с 2026-10; сниппет —
+`api_snippets.md`, «Новые ключи: правило по умолчанию»):
+- **1–2 слова → EXACT, 3+ слова → BROAD.** Короткий запрос в BROAD собирает чужой интент,
+  длинный в EXACT почти не получает показов.
+- **В каждую BROAD-адгруппу — EXACT-негативы текстов всех прочих активных ключей
+  кампании**, чтобы их запросы уходили в свои адгруппы, а не в BROAD.
+- **Тематические BROAD-негативы — на уровне адгруппы, не кампании.** Кампанийный BROAD-негатив
+  блокирует и собственные ключи: `stimme` блокирует `stimme klonen`. Негатив, все слова которого
+  входят в собственный ключ адгруппы, в неё не ставится.
+- **Ставка: старт $0.80, +$0.20 в день** ключам без показов —
+  `bids.py --step 0.20 --ramp-zero-impressions` (только после «да» пользователя).
+  Потолок — ориентир, не граница (см. ниже). Пауза — по GATE 3 и фактической экономике
+  (CPI, выручка, CPT против потолка), а не по достижению потолка.
 
 Всегда, независимо от архитектуры:
 - Bid raise (оптимизация): только если IS < 90% (или ключа нет в IS-отчёте — см. шаг 3)
+- **Потолок ставки (`economics.by_geo.*.bid_ceiling`) — ориентир, а не граница.** Ставка выше
+  потолка допустима: она даёт показы, а фактический CPT (вторая цена) остаётся у потолка или
+  ниже. С потолком сравнивай фактический CPT; CPT устойчиво выше потолка (≥ 5 тапов) → GATE 3
+  и пересчёт потолка. Ставку до потолка не обрезать и не понижать «потому что выше потолка».
+  Подробно — `decision_gates.md` → «Потолок ставки». Отчёт «ставка / потолок / CPT»:
+  `python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {проект} --report`
 - Paused кампании не удалять — данные нужны для истории
 - Target IPM = 250
