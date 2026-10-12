@@ -89,7 +89,7 @@ Discovery через обёртку молча выключала Search Match. 
   фактическим CPT и помечает `CPT > потолка`. Жёсткий предел — только явный `--max-bid`.
 
 ```python
-# Суть — не копировать, использовать shared/asa/bids.py
+# Суть — не копировать, использовать scripts/asa/bids.py
 for kw in active_keywords:                     # status == ACTIVE, адгруппа ENABLED
     new = round(kw.bid + STEP, 2)
     if MAX_BID is not None:
@@ -99,16 +99,16 @@ for kw in active_keywords:                     # status == ACTIVE, адгруп�
     plan.append((kw, kw.bid, new))             # пишется в data/bid_runs/ ДО записи
 ```
 
-Готовая реализация — `shared/asa/bids.py`, использовать её, а не писать заново:
+Готовая реализация — `scripts/asa/bids.py` (в репозитории — `shared/asa/bids.py`), использовать её, а не писать заново:
 
 ```bash
 # отчёт без изменений: ставка, потолок, фактический CPT за 7 дней, флаги
-python3 shared/asa/bids.py --project {путь_проекта} --report
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --report
 # ежедневный подъём ключей без показов (bid discovery): +$0.20 тем, у кого 0 показов вчера
-python3 shared/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions --dry-run
-python3 shared/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions --dry-run
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.20 --ramp-zero-impressions
 # шаг всем ACTIVE-ключам гео, с явным жёстким пределом
-python3 shared/asa/bids.py --project {путь_проекта} --step 0.30 --geos CH --max-bid 4.00
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {путь_проекта} --step 0.30 --geos CH --max-bid 4.00
 ```
 
 `--ramp-zero-impressions --days N` поднимает только ключи с 0 показов за N полных дней
@@ -125,10 +125,10 @@ python3 shared/asa/bids.py --project {путь_проекта} --step 0.30 --geo
 кабинет», а не слепой повтор. Клиент `bids.ASA` ретраит и записи — он сверяет цель
 с кабинетом, поэтому повтор там безопасен; для своих батч-правок бери его.
 
-> Источник правила: инцидент 2026-09-11 на проекте Songria. Обрыв соединения на
+> Источник правила: инцидент 2026-09-11 на реальном проекте. Обрыв соединения на
 > третьей кампании из трёх; первые две успели записать конфиг, повторный прогон
 > поднял им ставки второй раз — +$0.60 вместо +$0.30 по 46 адгруппам.
-> Рабочая реализация — `shared/asa/bids.py` (скриптов в папках проектов нет).
+> Рабочая реализация — `scripts/asa/bids.py` (скриптов в папках проектов нет).
 
 ## Пауза
 
@@ -168,8 +168,9 @@ api.add_targeting_keywords(campaign_id, ag_id,
 ```python
 START_BID = 0.80
 # Тематические BROAD-негативы для BROAD-адгрупп — список согласовать с пользователем.
-# Пример Songria: чужой интент (голос, DAW), который BROAD-ключи начинают ловить.
-THEMATIC_BROAD_NEGATIVES = ["stimme", "garageband", "fl studio"]
+# Пусто по умолчанию: это чужой интент, который BROAD-ключи начинают ловить, — свой
+# у каждой ниши. Пример для музыкального приложения: ["stimme", "garageband", "fl studio"].
+THEMATIC_BROAD_NEGATIVES = []
 
 
 def match_type_for(text):

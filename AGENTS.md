@@ -167,6 +167,7 @@
 │   └── ...                       ← общие скрипты скиллов (профили, ключи)
 ├── knowledge/
 │   ├── appstorespy_api.md        ← справочник «задача → команда» по AppStoreSpy
+│   ├── asa_campaign_architecture.md ← архитектура ASA-кампаний (общая для ASA-скиллов)
 │   └── ...                       ← 8 файлов теории ASO и связки ASO + ASA
 └── config/
     └── api_keys.env.example      ← шаблон для всех ключей (ASO, ASA, ASC)

@@ -10,9 +10,14 @@
 и дописывает её в campaigns_v2.json проекта. Идемпотентно по имени — адгруппа с
 таким именем в кампании пропускается, повторный запуск ничего не задваивает.
 
+Кампания выбирается по гео из конфига. Если на гео в конфиге несколько запущенных
+кампаний (например, отдельная брендовая), нужен явный --campaign-id.
+
 CLI:
-    python3 shared/asa/adgroups.py --project ~/Work/along/songria \
-        --geo CH --bid 3.50 --keywords "suno ia,suno ai gratuit" --dry-run
+    python3 shared/asa/adgroups.py --project ~/projects/myapp \
+        --geo DE --bid 0.80 --keywords "kalorien zähler,kalorien app" --dry-run
+    python3 shared/asa/adgroups.py --project ~/projects/myapp \
+        --geo DE --campaign-id <id> --bid 0.80 --keywords "kalorien zähler"
 """
 import sys
 from datetime import datetime, timezone
@@ -22,11 +27,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bids import ASA, load_config, save_config, bid_ceilings   # noqa: E402
 
 
-def campaign_for_geo(cfg, geo):
-    for c in cfg["campaigns"]:
-        if c.get("id") and geo in c.get("countries", []) and "Kostenlos" not in c["name"]:
-            return c
-    raise RuntimeError(f"В конфиге нет запущенной кампании для гео {geo}")
+def campaign_for_geo(cfg, geo, campaign_id=None):
+    """Кампания конфига для гео. Несколько кандидатов без campaign_id — отказ, не догадка."""
+    found = [c for c in cfg["campaigns"]
+             if c.get("id") and geo in c.get("countries", [])
+             and (campaign_id is None or str(c["id"]) == str(campaign_id))]
+    if not found:
+        raise RuntimeError(f"В конфиге нет запущенной кампании для гео {geo}"
+                           + (f" с id {campaign_id}" if campaign_id else ""))
+    if len(found) > 1:
+        raise RuntimeError(f"На гео {geo} в конфиге несколько кампаний — укажи --campaign-id: "
+                           + ", ".join(f"{c['id']} «{c.get('name', '')}»" for c in found))
+    return found[0]
 
 
 class AdGroupCreator(ASA):
@@ -52,7 +64,8 @@ class AdGroupCreator(ASA):
               "bidAmount": {"amount": f"{bid:.2f}", "currency": "USD"}}])
         return ag["id"], (kw[0]["id"] if kw else None)
 
-    def add_keywords(self, project, geo, keywords, bid, dry_run=False, max_bid=None):
+    def add_keywords(self, project, geo, keywords, bid, dry_run=False, max_bid=None,
+                     campaign_id=None):
         """Потолок из economics — ориентир: ставка выше него допустима (см. bids.py),
         печатается предупреждение. Жёсткий предел — только явный max_bid."""
         cfg = load_config(project)
@@ -64,7 +77,7 @@ class AdGroupCreator(ASA):
         elif bid > cap:
             print(f"  ⚠️  ставка ${bid:.2f} выше потолка-ориентира {geo} ${cap:.2f}: допустимо, "
                   "но следи, чтобы фактический CPT не держался выше потолка")
-        camp = campaign_for_geo(cfg, geo)
+        camp = campaign_for_geo(cfg, geo, campaign_id)
         have = self.existing_names(camp["id"])
         made = []
         for kw in keywords:
@@ -88,13 +101,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Создать keyword-адгруппы (1 ключ = 1 адгруппа)")
     ap.add_argument("--project", required=True)
     ap.add_argument("--geo", required=True)
+    ap.add_argument("--campaign-id", help="Нужен, если на гео в конфиге несколько кампаний")
     ap.add_argument("--bid", type=float, required=True)
     ap.add_argument("--keywords", required=True, help="Через запятую")
     ap.add_argument("--max-bid", type=float, help="Явный жёсткий предел ставки (необязательно)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     rows = AdGroupCreator().add_keywords(
-        a.project, a.geo.upper(), a.keywords.split(","), a.bid, a.dry_run, a.max_bid)
+        a.project, a.geo.upper(), a.keywords.split(","), a.bid, a.dry_run, a.max_bid,
+        a.campaign_id)
     for geo, kw, bid, agid in rows:
         print(f"  {geo} {kw[:34]:36} ${bid:.2f}  {agid or ''}")
     print(f"\n{'(dry-run) ' if a.dry_run else ''}создано: {len(rows)}")

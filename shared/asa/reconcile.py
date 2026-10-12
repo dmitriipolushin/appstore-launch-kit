@@ -5,7 +5,7 @@
 
 Ловит то, что не видно ни в конфиге проекта, ни в выгрузке метрик:
   1. Кампании аккаунта, которых нет в config/campaigns_v2.json и README.md
-     проекта (так нашлась «Songria Competitors — Global», которую никто не вёл).
+     проекта (так находятся кампании, которые завёл кто-то другой и никто не ведёт).
   2. ENABLED-адгруппы, где все ключи PAUSED: в интерфейсе адгруппа выглядит
      работающей, а показов нет и не будет. С Search Match такая адгруппа
      работает только через Search Match — это тоже отмечается.
@@ -13,9 +13,9 @@
      asa_changelog.md, — правки руками в кабинете или незаписанные сессии.
 
 CLI:
-    python3 shared/asa/reconcile.py --project ~/Work/along/songria
-    python3 shared/asa/reconcile.py --project ~/Work/along/songria --since 2026-10-09
-    python3 shared/asa/reconcile.py --project ~/Work/along/songria --all-apps
+    python3 shared/asa/reconcile.py --project ~/projects/myapp
+    python3 shared/asa/reconcile.py --project ~/projects/myapp --since 2026-10-09
+    python3 shared/asa/reconcile.py --project ~/projects/myapp --all-apps
 
 Креды кабинета — из окружения (ASA_ORG_ID, ASA_CLIENT_ID, ASA_KEY_ID), как у bids.py:
 если README проекта задаёт свой кабинет — экспортируй его переменные перед запуском.

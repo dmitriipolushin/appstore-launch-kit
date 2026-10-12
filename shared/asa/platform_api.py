@@ -22,7 +22,7 @@ Credentials — канонические `ASA_*` из `~/.config/aso-tools/api_k
 CLI:
     python3 shared/asa/platform_api.py --list-accounts
     python3 shared/asa/platform_api.py --suggest-keywords --app-id 123 \
-        --seeds "ki song,suno" --country DE
+        --seeds "kalorien,schrittzähler" --country DE
 
     # Проверить свой список ключей: какие в топ-500 жанра и с какой popularity
     python3 shared/asa/platform_api.py --popularity --countries DE,AT \

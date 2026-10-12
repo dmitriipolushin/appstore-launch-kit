@@ -94,8 +94,8 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/reconcile.py --project {па
 
 1. **Все кампании аккаунта** с отметкой `НЕ УЧТЕНА` у тех, чьих id/имени нет ни в
    конфиге, ни в README. ENABLED неучтённая кампания тратит деньги мимо анализа —
-   спроси пользователя, чья она, и внеси в README/конфиг (пример: «Songria Competitors —
-   Global» и «Songria Brazil» на проекте Songria).
+   спроси пользователя, чья она, и внеси в README/конфиг (типичный случай: глобальная
+   кампания на конкурентов или тест новой страны, заведённые в обход проекта).
 2. **ENABLED-адгруппы, у которых все ключи PAUSED.** В интерфейсе они выглядят
    работающими, а показов нет. Предложи паузу адгруппы или включение ключа.
 3. **Изменения после последней записи changelog** (`modificationTime` кампаний,
@@ -226,7 +226,7 @@ python3 ~/.claude/skills/asa-monitoring/scripts/asa/asa_analyze.py \
 #### Шаг 6 — После подтверждения: Выполнение + Запись в changelog
 
 1. Выполнить через API (сниппеты в `api_snippets.md`):
-   - Подъём ставок пачкой — только `shared/asa/bids.py` (сначала `--dry-run`): только вверх,
+   - Подъём ставок пачкой — только `scripts/asa/bids.py` (сначала `--dry-run`): только вверх,
      только ACTIVE-ключи, повтор после обрыва не задваивает шаг
    - ⚠️ Верифицировать adgroup_id через `api.get_adgroups(campaign_id)` перед keyword-операциями
    - После bid raise — обновить adgroup default CPT bid = максимальная keyword bid
@@ -299,7 +299,7 @@ multiplier = organic / asa_installs
 python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
   --term "ki scan" --country de
 python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
-  --seeds "ki song,suno,lied erstellen" --country de --depth 2 --out hints_de.json
+  --seeds "kalorien,schrittzähler,diät plan" --country de --depth 2 --out hints_de.json
 ```
 Тир HIGH по hints не информативен (суррогат по позиции, почти у всех 10000) — смотри `hits` и Search Popularity. Сбойные запросы считаются в итоге (`НЕУДАЧНЫХ N`, код выхода 3), повтор команды дозапрашивает только их.
 
@@ -317,8 +317,8 @@ Cookie истекает ~24ч. При 401 — обновить `APPLE_SA_COOKIE`
 popularity 0-100 по своему приложению. Cookie не нужен, авторизация обычная.
 
 ```bash
-python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
-    --seeds "ki song,suno,ai song" --country DE
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
+    --seeds "kalorien,schrittzähler,diät" --country DE
 ```
 
 Без `--seeds` вернёт общие головные запросы жанра (youtube, spotify) — бесполезно.
@@ -328,7 +328,7 @@ python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
 списки, popularity не привязана к стране.
 
 ⚠️ **Это подсказки, а не поиск popularity по произвольному терму.** Apple возвращает
-только то, что сам считает подсказкой по сидам: на Songria 184 терма-сида дали 42 строки.
+только то, что сам считает подсказкой по сидам: на реальном проекте 184 терма-сида дали 42 строки.
 Отсутствие терма в ответе = **нет данных**, а не «popularity 0». Проверка конкретного терма:
 1. `platform_api.py --popularity --terms "<терм>" --countries DE` — официальная popularity
    по стране, но только голова (в DE порог ≈ 49); нет в выдаче = ниже порога;
@@ -341,11 +341,11 @@ python3 shared/asa/platform_api.py --suggest-keywords --app-id {adam_id} \
 
 ```bash
 # Проверить свои ключи (регистр не важен); без --month — последний опубликованный месяц
-python3 shared/asa/platform_api.py --popularity --countries DE,AT --terms "schrittzähler,kalorienzähler"
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries DE,AT --terms "schrittzähler,kalorienzähler"
 # Топ жанра / запросы со словом / понедельный срез
-python3 shared/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS --out pop.csv
-python3 shared/asa/platform_api.py --popularity --countries US --contains song
-python3 shared/asa/platform_api.py --popularity --week 2026-09-13 --countries DE --genre PHOTO_VIDEO
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries DE --genre HEALTH_FITNESS --out pop.csv
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --countries US --contains song
+python3 ~/.claude/skills/asa-monitoring/scripts/asa/platform_api.py --popularity --week 2026-09-13 --countries DE --genre PHOTO_VIDEO
 ```
 
 Не привязан к своему приложению и честно разбит по странам. Покрытие — только
@@ -379,7 +379,7 @@ python3 ~/.claude/skills/aso-collection/scripts/search_positions.py \
 ## Структурные правила
 
 **Это правила по умолчанию, а не догма.** Если `README.md` проекта или changelog фиксирует
-другую архитектуру (решение владельца) — работай в ней и не предлагай «привести к стандарту»
+другую архитектуру (решение владельца приложения) — работай в ней и не предлагай «привести к стандарту»
 без новых данных. Примеры отклонений, которые встречаются: BROAD-ключи на смысловой кластер,
 Discovery-адгруппа с Search Match внутри основной кампании, много адгрупп «1 ключ = 1 адгруппа»
 в одной кампании на гео. Тогда Discovery и BROAD оцениваются по тем же gates, что и EXACT,
@@ -389,7 +389,7 @@ Discovery-адгруппа с Search Match внутри основной кам�
 - Search Match (`automatedKeywordsOptIn`) выключен — Discovery-adgroup не используется
 - 1 ключ = 1 кампания (бюджетная изоляция + точный CPTrial)
 
-**Новые ключи — правило по умолчанию** (решение владельца, 2026-10; сниппет —
+**Новые ключи — правило по умолчанию** (по умолчанию с 2026-10; сниппет —
 `api_snippets.md`, «Новые ключи: правило по умолчанию»):
 - **1–2 слова → EXACT, 3+ слова → BROAD.** Короткий запрос в BROAD собирает чужой интент,
   длинный в EXACT почти не получает показов.
@@ -410,6 +410,6 @@ Discovery-адгруппа с Search Match внутри основной кам�
   ниже. С потолком сравнивай фактический CPT; CPT устойчиво выше потолка (≥ 5 тапов) → GATE 3
   и пересчёт потолка. Ставку до потолка не обрезать и не понижать «потому что выше потолка».
   Подробно — `decision_gates.md` → «Потолок ставки». Отчёт «ставка / потолок / CPT»:
-  `python3 shared/asa/bids.py --project {проект} --report`
+  `python3 ~/.claude/skills/asa-monitoring/scripts/asa/bids.py --project {проект} --report`
 - Paused кампании не удалять — данные нужны для истории
 - Target IPM = 250

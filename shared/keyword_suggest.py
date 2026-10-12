@@ -38,7 +38,7 @@ CLI usage:
     python3 keyword_suggest.py --term "calorie" --country us
     python3 keyword_suggest.py --seeds "calorie,diet,food tracker" --country mx
     python3 keyword_suggest.py --seeds "калории,счетчик" --countries kz,ru,ua
-    python3 keyword_suggest.py --seeds "ki song,suno" --country de --depth 2 --out hints_de.json
+    python3 keyword_suggest.py --seeds "kalorien,schrittzähler" --country de --depth 2 --out hints_de.json
     python3 keyword_suggest.py --trends --country br
 """
 
@@ -367,7 +367,7 @@ def alphabet_queries(seed: str) -> List[str]:
 def is_niche(term: str, source: str) -> bool:
     """Подсказка уточняет свой сид: содержит его целиком и длиннее него.
 
-    `ki song generator` для сида `ki song` — нишевая; `kim kardashian` — нет.
+    `calorie counter free` для сида `calorie counter` — нишевая; `calories in banana` — нет.
     """
     t, s = term.lower(), source.lower()
     return t != s and s in t
@@ -568,7 +568,7 @@ def main():
   python3 keyword_suggest.py --term "calorie" --country us
   python3 keyword_suggest.py --seeds "calorie,diet,food" --country mx
   python3 keyword_suggest.py --seeds "калории,счетчик" --countries kz,ru,ua
-  python3 keyword_suggest.py --seeds "ki song,suno" --country de --depth 2 --out hints_de.json
+  python3 keyword_suggest.py --seeds "kalorien,schrittzähler" --country de --depth 2 --out hints_de.json
   python3 keyword_suggest.py --trends --country br
 
 Коды выхода: 0 — всё получено; 3 — обход неполный (часть запросов без ответа,

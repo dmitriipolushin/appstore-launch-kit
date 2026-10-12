@@ -80,7 +80,7 @@ git clone git@github.com:dmitriipolushin/appstore-launch-kit.git && cd appstore-
 одна и та же ошибка жила в четырёх версиях. Теперь:
 
 ```
-knowledge/                       ← единственный источник правды, 8 файлов
+knowledge/                       ← единственный источник правды (теория ASO + архитектура ASA)
 skills/<skill>/knowledge/
     aso_algorithms.md            → симлинк на ../../../knowledge/
     aso_creatives.md             → симлинк
@@ -90,12 +90,12 @@ skills/<skill>/knowledge/
     aso_keyword_research.md      → симлинк
     aso_theory_base.md           → симлинк ИЛИ своя версия, если что-то добавляет
     aso_metrics_iteration.md     → симлинк ИЛИ своя версия
-    asa_campaign_architecture.md ← только у ASA-скиллов
+    asa_campaign_architecture.md → симлинк (только у ASA-скиллов)
     api_snippets.md              ← только у asa-monitoring
     decision_gates.md            ← только у asa-monitoring
 ```
 
-Первые шесть файлов правятся **только** в `knowledge/`. Последние два допускают
+Первые шесть файлов и `asa_campaign_architecture.md` правятся **только** в `knowledge/`. Последние два допускают
 свою версию в скилле, если она добавляет содержание (у ASA-скиллов там разделы
 про архитектуру кампаний, Impression Share и IPM) — но не ради простой копии.
 

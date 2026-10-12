@@ -51,8 +51,8 @@ Priority Score = Relevance × Volume × (1/Competition) × Conversion Potential
 | `searchPopularity` в Impression Share отчёте | 1–5 | не перепроверено | нужна своя кампания | только ключи кампании |
 
 **Не путать с `/v1/suggestions/keywords/query`** (`platform_api.py --suggest-keywords`).
-Это подсказки Apple по сидам, а не поиск popularity по произвольному терму: на Songria
-184 терма-сида дали 42 строки (2026-10), фильтр страны игнорируется. Нет терма в ответе =
+Это подсказки Apple по сидам, а не поиск popularity по произвольному терму: на реальном
+проекте 184 терма-сида дали 42 строки (2026-10), фильтр страны игнорируется. Нет терма в ответе =
 **нет данных**, а не «ноль». Проверка конкретного терма: (1) `platform_api.py --popularity
 --terms "<терм>" --countries DE` — голова по стране; (2) ниже порога —
 `getRecommendedKeywords` (cookie/браузер, своё приложение в нише); (3) нигде нет, но терм
@@ -99,7 +99,7 @@ python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
   --term "lebensmit" --country de
 # обход сидов (сид + a–z), с раскрытием нишевых подсказок второго уровня
 python3 ~/.claude/skills/aso-collection/scripts/keyword_suggest.py \
-  --seeds "ki song,suno" --country de --depth 2 --out hints_de.json
+  --seeds "kalorien,schrittzähler" --country de --depth 2 --out hints_de.json
 ```
 
 Как устроен источник (замеры 2026-10, DE/AT/CH):

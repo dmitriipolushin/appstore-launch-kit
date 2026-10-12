@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Безопасное массовое поднятие ставок Apple Search Ads (v5).
 
-Почему отдельный модуль, а не разовый скрипт: 2026-09-11 на проекте Songria
+Почему отдельный модуль, а не разовый скрипт: 2026-09-11 на реальном проекте
 поднятие ставок по 61 адгруппе оборвалось на третьей кампании из трёх. Первые
 две успели записать конфиг, повторный запуск считал цель как «конфиг + шаг» и
 применил шаг второй раз — +$0.60 вместо +$0.30 по 46 адгруппам.
@@ -15,7 +15,8 @@
     записи. Повторный запуск с теми же параметрами в тот же день продолжает
     этот план: применённое пропускается, шаг второй раз не прибавляется;
   * default bid адгруппы подтягивается до максимальной ставки её ключей
-    (только вверх, Search Match не трогается);
+    (только вверх). В адгруппе с включённым Search Match default bid — это ставка
+    Search Match, поэтому там он не трогается;
   * сетевые обрывы, 429 и 5xx ретраятся с нарастающей паузой.
 
 Потолок ставки (economics.by_geo.<GEO>.bid_ceiling) — ОРИЕНТИР, а не граница.
@@ -35,10 +36,10 @@
                             ≥ --max-bid) — кандидат на паузу по GATE 3.
 
 CLI:
-    python3 shared/asa/bids.py --project ~/Work/along/songria --step 0.20 --ramp-zero-impressions --dry-run
-    python3 shared/asa/bids.py --project ~/Work/along/songria --step 0.20 --ramp-zero-impressions --days 1
-    python3 shared/asa/bids.py --project ~/Work/along/songria --step 0.30 --geos CH --max-bid 4.00
-    python3 shared/asa/bids.py --project ~/Work/along/songria --report        # только отчёт
+    python3 shared/asa/bids.py --project ~/projects/myapp --step 0.20 --ramp-zero-impressions --dry-run
+    python3 shared/asa/bids.py --project ~/projects/myapp --step 0.20 --ramp-zero-impressions --days 1
+    python3 shared/asa/bids.py --project ~/projects/myapp --step 0.30 --geos CH --max-bid 4.00
+    python3 shared/asa/bids.py --project ~/projects/myapp --report        # только отчёт
 """
 import json
 import time
@@ -184,8 +185,9 @@ def snapshot(api, cfg, geos=None, campaign_ids=None, perf=None, zero=None, pause
         if not cid or (campaign_ids and cid not in campaign_ids):
             continue
         camp = api._req("GET", f"/campaigns/{cid}")
-        geo = ",".join(camp.get("countriesOrRegions") or c.get("countries") or [])
-        if geos and geo not in geos:
+        countries = camp.get("countriesOrRegions") or c.get("countries") or []
+        geo = ",".join(countries)
+        if geos and not set(countries) & set(geos):
             continue
         if camp.get("status") != "ENABLED" or camp.get("deleted"):
             skipped.append(f"{camp.get('name', cid)} — кампания {camp.get('status')}")
@@ -287,6 +289,9 @@ def apply_plan(api, project, cfg, plan, rows, adgroups, state_path, new_run=Fals
     def ensure_adgroup_default(e):
         """default bid адгруппы ≥ ставки ключа; идемпотентно, только вверх."""
         ag = adgroups.get((e["campaign_id"], e["adgroup_id"])) or {}
+        if ag.get("automatedKeywordsOptIn"):
+            # default bid здесь — ставка Search Match: подъём ключа её не касается
+            return
         ag_bid = float((ag.get("defaultBidAmount") or {}).get("amount", 0) or 0)
         if e["target"] > ag_bid + 1e-9:
             api.set_adgroup_default_bid(e["campaign_id"], e["adgroup_id"], e["target"])
