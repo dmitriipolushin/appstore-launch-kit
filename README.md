@@ -49,7 +49,7 @@
 |---|---|
 | **[skills/asa-launch](skills/asa-launch/)** | Запуск новой кампании через API: отбор ключей, тематические кластеры вместо одной кампании, стартовые ставки с bid discovery, негативы, organic baseline до старта |
 | **[skills/asa-monitoring](skills/asa-monitoring/)** | Ежедневная и еженедельная оптимизация: метрики по ключам и search terms, триалы из Amplitude, Impression Share, gate-проверки перед каждым решением, ставки и паузы, changelog изменений, organic vs paid по данным ASC |
-| **[shared/asa/](shared/asa/)** | Общий ASA-тулкит обоих скиллов. `platform_api.py` — Apple Ads Platform API: официальная Search Popularity по стране и жанру (без cookie и без своего приложения в нише), подсказки ключей. `bids.py` — точечный подъём ставок, `adgroups.py` — создание адгрупп |
+| **[shared/asa/](shared/asa/)** | Общий ASA-тулкит обоих скиллов. `platform_api.py` — Apple Ads Platform API: официальная Search Popularity по стране и жанру (без cookie и без своего приложения в нише), подсказки ключей. `bids.py` — подъём ставок (только вверх, только ACTIVE-ключи, идемпотентно; отчёт «ставка / потолок-ориентир / фактический CPT»), `adgroups.py` — создание адгрупп, `reconcile.py` — сверка кабинета с учётом проекта (неучтённые кампании, адгруппы без активных ключей, правки после changelog) |
 
 ### Общее
 
@@ -105,7 +105,7 @@ skills/<skill>/knowledge/
 - `env_setup.py`, `keyword_suggest.py`, `collect_profiles.py`, `project_config.py`,
   `keyword_popularity.py` — общие для ASO/ASA-скиллов
 - `asa/` — тулкит Apple Search Ads (`platform_api.py`, `bids.py`, `adgroups.py`,
-  `logic.py`, `settings.py`, `utils/*`), общий для `asa-launch` и `asa-monitoring`
+  `reconcile.py`, `logic.py`, `settings.py`, `utils/*`), общий для `asa-launch` и `asa-monitoring`
 
 Пофайлово оставлен только `search_positions.py`: у версий разный CLI-контракт
 (`--app-ids` со списком против `--app-id` для одного приложения).

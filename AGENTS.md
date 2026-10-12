@@ -35,7 +35,7 @@
 | «Проанализируй конкурента», «найди похожие приложения», «сколько он зарабатывает», «оцени нишу», «позиции в чартах» | [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) — инструменты анализа чужих приложений через `shared/appstorespy_cli.py` |
 | «Проверь позиции», «найди новые ключи», «что изменилось после обновления метаданных» | [`skills/aso-monitoring/SKILL.md`](skills/aso-monitoring/SKILL.md) |
 | «Запусти рекламу в Apple Ads / ASA», «создай кампанию», «добавь кластер ключей в рекламу» | [`skills/asa-launch/SKILL.md`](skills/asa-launch/SKILL.md) |
-| «Проверь ASA-кампании», «подними/снизь ставки», «почему растёт CPA», «какие ключи паузить» | [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) |
+| «Проверь ASA-кампании», «подними/снизь ставки», «почему растёт CPA», «какие ключи паузить» | [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) — начинать со сверки кабинета `shared/asa/reconcile.py`; потолок ставки — ориентир, а не граница (`decision_gates.md`) |
 | «Какая популярность у ключей», «какие запросы самые частые в жанре/стране» | `python3 shared/asa/platform_api.py --popularity --terms …` — официальная Search Popularity Apple Ads по стране, без своего приложения в нише. Как читать ответ — [`skills/aso-collection/SKILL.md`](skills/aso-collection/SKILL.md), шаг 4В1 |
 | «Мы готовы публиковаться, что делать» | Полный маршрут ниже ↓ |
 
@@ -162,7 +162,8 @@
 │   ├── appstorespy_cli.py        ← CLI к нему — анализ чужих приложений в сторе
 │   ├── asa/                      ← ASA-тулкит обоих ASA-скиллов: platform_api.py
 │   │                               (Apple Ads Platform API, Search Popularity),
-│   │                               bids.py, adgroups.py, utils/asa_api.py (API v5)
+│   │                               bids.py, adgroups.py, reconcile.py,
+│   │                               utils/asa_api.py (API v5)
 │   └── ...                       ← общие скрипты скиллов (профили, ключи)
 ├── knowledge/
 │   ├── appstorespy_api.md        ← справочник «задача → команда» по AppStoreSpy
