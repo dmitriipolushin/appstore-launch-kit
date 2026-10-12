@@ -151,6 +151,35 @@ class SearchAdsAPI:
 
     # API Function
 
+    # Без таймаута один зависший ответ Apple вешал весь asa_fetch навсегда.
+    timeout = 60
+    read_retries = 4
+
+    def _send(self, caller, method, url, api_endpoint, kwargs):
+        """Запрос с таймаутом. Чтение (GET, reports/*, */find) повторяется на
+        обрыв, таймаут, 429 и 5xx с нарастающей паузой. Запись — одна попытка:
+        повтор POST/PUT после таймаута мог бы применить правку дважды."""
+        ep = api_endpoint.strip("/")
+        readonly = method == "GET" or ep.startswith("reports/") or ep.endswith("/find") \
+            or ep == "campaigns/find"
+        tries = self.read_retries if readonly else 1
+        kwargs = dict(kwargs, timeout=self.timeout)
+        for attempt in range(tries):
+            try:
+                req = getattr(caller, method.lower())(url, **kwargs)
+            except (requests.Timeout, requests.ConnectionError) as e:
+                if attempt == tries - 1:
+                    if readonly:
+                        raise RuntimeError(f"{method} {ep}: нет ответа после {tries} попыток ({e})") from e
+                    raise RuntimeError(
+                        f"{method} {ep}: нет ответа за {self.timeout} с ({type(e).__name__}). "
+                        "Запись могла примениться — перечитай кабинет перед повтором.") from e
+            else:
+                if not (readonly and (req.status_code == 429 or req.status_code >= 500)) \
+                        or attempt == tries - 1:
+                    return req
+            time.sleep(min(30, 2 * 2 ** attempt))
+
     def api_call(
         self,
         api_endpoint="",
@@ -218,14 +247,7 @@ class SearchAdsAPI:
             kwargs["params"].update(params)
             path = f"{self.api_version}/{api_endpoint}"
             url = f"https://api.searchads.apple.com/api/{path}"
-            if method.upper() == "GET":
-                req = caller.get(url, **kwargs)
-            elif method.upper() == "POST":
-                req = caller.post(url, **kwargs)
-            elif method.upper() == "PUT":
-                req = caller.put(url, **kwargs)
-            elif method.upper() == "DELETE":
-                req = caller.delete(url, **kwargs)
+            req = self._send(caller, method.upper(), url, api_endpoint, kwargs)
 
             if self.verbose:
                 print(req.status_code)
