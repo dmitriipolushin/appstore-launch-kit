@@ -164,8 +164,6 @@ api.add_campaign_negative_keywords(campaign_id,
 ## Создать новую кампанию
 
 ```python
-from datetime import datetime
-
 data = {
     "orgId": api.org_id,
     "name": "PS — keyword name",
@@ -182,9 +180,9 @@ camp_id = camp["data"]["id"]
 
 ag = api.create_adgroup(
     campaign_id=camp_id, adgroup_name="Keywords", currency="USD",
-    cpc_bid=BID, start_time=datetime.now(),
+    cpc_bid=BID,   # start_time по умолчанию — сейчас, UTC; наивное datetime → ValueError
     automated_keywords_opt_in=False, device_class=["IPHONE", "IPAD"],
-)
+)   # targetingDimensions = только переданные измерения (здесь deviceClass)
 ag_id = ag["data"]["id"]
 
 api.add_targeting_keywords(camp_id, ag_id,

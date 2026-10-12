@@ -118,15 +118,15 @@ print(f"Campaign created: {campaign_id}")
 **Одна adgroup на кампанию.** Search Match выключен, автоподбор ключей выключен, только ручные EXACT-ключи с индивидуальными ставками.
 
 ```python
-start_time = datetime.datetime.utcnow()
-
 adgroup = api.create_adgroup(
     campaign_id=campaign_id,
     adgroup_name="Keywords",
     currency="USD",
     cpc_bid=0.10,  # bid discovery: старт с минимума, см. раздел про ставки
-    start_time=start_time,
+    # start_time не передаём — старт «сейчас» в UTC. Своё время — только aware
+    # (datetime.now(timezone.utc)); наивное datetime create_adgroup отвергает.
     automated_keywords_opt_in=False,  # Search Match OFF — обязательно
+    device_class=["IPHONE"],  # в targetingDimensions уходят только заданные измерения
 )
 adgroup_id = adgroup["data"]["id"]
 ```
