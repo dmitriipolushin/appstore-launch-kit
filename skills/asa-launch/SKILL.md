@@ -35,7 +35,7 @@ Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читаю
 ```
 ./asa-launch/
 ├── config/
-│   └── campaign.json   # campaign_id, adgroup_id, ключи, даты
+│   └── campaign.json   # campaign_id, ключи с adgroup_id, даты
 └── data/
 ```
 
@@ -62,8 +62,10 @@ Credentials — в `~/.config/aso-tools/api_keys.env`, скрипты читаю
 - Исключить смежные ниши с другим intent (уточни у пользователя)
 
 **Выбор архитектуры кампании** (см. `asa_campaign_architecture.md`):
-- ≤ 8 ключей одного intent → одна кампания с одной adgroup (EXACT, Search Match OFF)
+- ≤ 8 ключей одного intent → одна кампания
 - > 8 ключей с разными аудиториями → **thematic multi-campaign** (каждый кластер = отдельная кампания)
+
+Внутри кампании при любой архитектуре — **1 ключ = 1 адгруппа** (EXACT, Search Match OFF). Обоснование — в шаге 3.
 
 **Discovery-adgroup с Search Match не создаём.** Обоснование — в разделе «Почему без Search Match».
 
@@ -115,23 +117,44 @@ campaign_id = campaign["data"]["id"]
 print(f"Campaign created: {campaign_id}")
 ```
 
-### 3. Создай adgroup
+### 3. Создай адгруппы — 1 ключ = 1 адгруппа
 
-**Одна adgroup на кампанию.** Search Match выключен, автоподбор ключей выключен, только ручные EXACT-ключи с индивидуальными ставками.
+**Каждый ключ — в своей адгруппе.** Имя адгруппы = текст ключа. Search Match выключен, автоподбор ключей выключен, EXACT.
+
+Почему не одна адгруппа на все ключи:
+- **Ставка ключа и default bid адгруппы совпадают.** Нет fallback-ставки, которая отстаёт от ключевой и режет её на уровне адгруппы.
+- **Ключ управляется отдельно.** Пауза, подъём, смена CPP или таргетинга одного ключа не задевают остальные.
+- **Отчёты по адгруппам = отчёты по ключам.** На этой архитектуре построены asa-monitoring
+  (`asa_fetch.py --by-keyword`, `bids.py`, `reconcile.py`) и правило для новых ключей
+  в `knowledge/asa_campaign_architecture.md` → «Новые ключи — EXACT по умолчанию».
+
+Один и тот же ключ не должен стоять в двух адгруппах кампании: они конкурировали бы за один запрос.
 
 ```python
-adgroup = api.create_adgroup(
-    campaign_id=campaign_id,
-    adgroup_name="Keywords",
-    currency="USD",
-    cpc_bid=0.10,  # bid discovery: старт с минимума, см. раздел про ставки
-    # start_time не передаём — старт «сейчас» в UTC. Своё время — только aware
-    # (datetime.now(timezone.utc)); наивное datetime create_adgroup отвергает.
-    automated_keywords_opt_in=False,  # Search Match OFF — обязательно
-    device_class=["IPHONE"],  # в targetingDimensions уходят только заданные измерения
-)
-adgroup_id = adgroup["data"]["id"]
+def add_keyword_adgroup(api, campaign_id, text, bid):
+    """Адгруппа + один EXACT-ключ. Повторно не создаёт: имя адгруппы уникально в кампании."""
+    if any(a["name"] == text for a in api.get_adgroups(campaign_id)):
+        return None
+    ag = api.create_adgroup(
+        campaign_id=campaign_id,
+        adgroup_name=text,
+        currency="USD",
+        cpc_bid=bid,  # default bid адгруппы = ставка ключа
+        # start_time не передаём — старт «сейчас» в UTC. Своё время — только aware
+        # (datetime.now(timezone.utc)); наивное datetime create_adgroup отвергает.
+        automated_keywords_opt_in=False,  # Search Match OFF — обязательно
+        device_class=["IPHONE"],  # в targetingDimensions уходят только заданные измерения
+    )
+    ag_id = ag["data"]["id"]
+    api.add_targeting_keywords(campaign_id, ag_id, [{
+        "text": text, "matchType": "EXACT",
+        "bidAmount": {"amount": f"{bid:.2f}", "currency": "USD"}}])
+    return ag_id
 ```
+
+Проверка «уже есть» — по кабинету, а не по локальному состоянию: Apple иногда принимает POST
+и обрывает соединение без ответа, и повторный прогон должен дочинить, а не упасть
+на `DUPLICATE_AD_GROUP_NAME`.
 
 #### Почему без Search Match
 
@@ -159,23 +182,17 @@ Discovery-adgroup с `automatedKeywordsOptIn=True` раньше использо
 Ставки — по bid discovery: без данных о clearing price все ключи стартуют с минимума.
 
 ```python
-keywords = [
-    {"text": "keyword one", "matchType": "EXACT", "bidAmount": {"amount": "0.10", "currency": "USD"}},
-    {"text": "keyword two", "matchType": "EXACT", "bidAmount": {"amount": "0.10", "currency": "USD"}},
-]
-api.add_targeting_keywords(campaign_id, adgroup_id, keywords)
-print(f"Added {len(keywords)} keywords")
+keywords = ["keyword one", "keyword two"]
+adgroups = {}
+for text in keywords:
+    adgroups[text] = add_keyword_adgroup(api, campaign_id, text, bid=0.10)
+print(f"Adgroups created: {sum(v is not None for v in adgroups.values())}/{len(keywords)}")
 ```
 
-**После добавления ключей — обновить adgroup default CPT bid:**
-
-Adgroup default bid — это fallback для любого ключа без явной ставки. Если он ниже keyword-level ставок, Apple может ограничивать через adgroup-уровень. Всегда устанавливать равным максимальной ставке среди ключей в этой адгруппе.
-
-```python
-max_bid = max(float(kw["bidAmount"]["amount"]) for kw in keywords)
-api.update_adgroup(campaign_id, adgroup_id, cpc_bid=max_bid, currency="USD")
-print(f"Adgroup default CPT bid set to ${max_bid:.2f}")
-```
+**Ставку ключа и default bid адгруппы менять вместе.** Default bid — fallback ставка адгруппы;
+если он ниже ставки ключа, Apple может ограничивать через уровень адгруппы. Адгруппу правь
+прямым PUT одного поля `defaultBidAmount`: `update_adgroup()` пишет в запрос и
+`automatedKeywordsOptIn`, и неосторожный вызов на Discovery-адгруппе выключил бы Search Match.
 
 ### 5. Добавь негативы
 
@@ -197,8 +214,11 @@ api.add_campaign_negative_keywords(campaign_id, campaign_negatives)
 ```python
 campaign = api.get_campaign(campaign_id)
 print(f"Status: {campaign['status']}")  # должно быть ENABLED
-kws = api.get_targeting_keywords(campaign_id, adgroup_id)
-print(f"Keywords: {len(kws)}")
+for ag in api.get_adgroups(campaign_id):
+    kws = api.get_targeting_keywords(campaign_id, ag["id"])
+    # ожидаем: 1 EXACT-ключ ACTIVE, automatedKeywordsOptIn=False, displayStatus RUNNING
+    print(ag["name"], ag["displayStatus"], ag["automatedKeywordsOptIn"],
+          [(k["text"], k["matchType"], k["status"], k["bidAmount"]["amount"]) for k in kws])
 ```
 
 ### 7. Сохрани в campaign.json
@@ -208,14 +228,13 @@ print(f"Keywords: {len(kws)}")
   "app_name": "{App}",
   "app_id": 0,
   "campaign_id": 0,
-  "adgroup_id": 0,
   "campaign_start": "YYYY-MM-DD",
   "last_change": "YYYY-MM-DD",
   "organic_baseline_14d": 0,
   "daily_budget": 20,
   "countries": ["US", "GB", "CA"],
   "keywords": [
-    {"text": "keyword", "bid": 0.10, "status": "ENABLED"}
+    {"text": "keyword", "adgroup_id": 0, "keyword_id": 0, "bid": 0.10, "status": "ENABLED"}
   ],
   "negative_keywords": ["competitor brand"],
   "change_log": [
@@ -231,7 +250,7 @@ print(f"Keywords: {len(kws)}")
 - **Ничего не создавать в API без явного «да».** Сначала показать пользователю план целиком: кампании и кластеры, ключи, стартовые ставки, дневной бюджет, страны, негативы. Кампания начинает тратить деньги сразу после создания
 - Не запускать BROAD на старте — даёт нерелевантный трафик без истории; тест BROAD — позже, по `asa_campaign_architecture.md`
 - `automatedKeywordsOptIn=False` **всегда** — Search Match не используем ни на какой ставке
-- Одна adgroup на кампанию — второй группы, конкурирующей за тот же запрос, быть не должно
+- 1 ключ = 1 адгруппа; один ключ — только в одной адгруппе кампании, иначе две адгруппы конкурируют за один запрос
 - Первые 3–5 дней не трогать ставки у ключей, **где impressions уже есть** — набирается статистика
 - Ключи с нулевыми impressions — исключение: ставку поднимаем каждые ~2 часа, пока показы не появятся
 - Первая проверка показов — через ~2 часа после запуска; полный разбор — через 3 дня по скиллу asa-monitoring
