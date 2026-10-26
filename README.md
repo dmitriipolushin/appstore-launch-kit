@@ -31,6 +31,12 @@
 
 ## Что внутри
 
+### Выбор ниши
+
+| | Что делает |
+|---|---|
+| **[skills/niche-analysis](skills/niche-analysis/)** | Оценка ниши до разработки по данным AppStoreSpy: выручка ниши в месяц, доля приложений последних 2 лет, средний RPD, консолидация (доля лидера, небольшие новые приложения с выручкой). Вердикт по пяти критериям |
+
 ### ASO — органический поиск
 
 | | Что делает |
@@ -62,7 +68,7 @@
 
 ## Установка как скиллы Claude Code
 
-Скиллы можно подключить, чтобы они вызывались как `/aso-collection`, `/asa-launch`, `/asa-monitoring` и так далее — `install.sh` ставит все семь:
+Скиллы можно подключить, чтобы они вызывались как `/aso-collection`, `/asa-launch`, `/asa-monitoring` и так далее — `install.sh` ставит все восемь:
 
 ```bash
 git clone git@github.com:dmitriipolushin/appstore-launch-kit.git && cd appstore-launch-kit

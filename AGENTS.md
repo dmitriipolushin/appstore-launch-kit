@@ -32,7 +32,8 @@
 | «Залей метаданные в App Store Connect» | [`skills/asc-metadata/SKILL.md`](skills/asc-metadata/SKILL.md) |
 | «Помоги пройти модерацию», «получил reject», «что писать в Notes» | [`docs/app-store-review-guide.md`](docs/app-store-review-guide.md) |
 | «Посчитай ASO-скор», «спланируй A/B тест», «проанализируй отзывы» | [`skills/app-store-optimization/`](skills/app-store-optimization/) — набор автономных Python-скриптов |
-| «Проанализируй конкурента», «найди похожие приложения», «сколько он зарабатывает», «оцени нишу», «позиции в чартах» | [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) — инструменты анализа чужих приложений через `shared/appstorespy_cli.py` |
+| «Оцени нишу», «стоит ли заходить в нишу», «есть ли деньги в категории», «сравни ниши» | [`skills/niche-analysis/SKILL.md`](skills/niche-analysis/SKILL.md) — выручка ниши, доля новых приложений, RPD, консолидация → вердикт по пяти критериям |
+| «Проанализируй конкурента», «найди похожие приложения», «сколько он зарабатывает», «позиции в чартах» | [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) — инструменты анализа чужих приложений через `shared/appstorespy_cli.py` |
 | «Проверь позиции», «найди новые ключи», «что изменилось после обновления метаданных» | [`skills/aso-monitoring/SKILL.md`](skills/aso-monitoring/SKILL.md) |
 | «Запусти рекламу в Apple Ads / ASA», «создай кампанию», «добавь кластер ключей в рекламу» | [`skills/asa-launch/SKILL.md`](skills/asa-launch/SKILL.md) |
 | «Проверь ASA-кампании», «подними/снизь ставки», «почему растёт CPA», «какие ключи паузить» | [`skills/asa-monitoring/SKILL.md`](skills/asa-monitoring/SKILL.md) — начинать со сверки кабинета `shared/asa/reconcile.py`; потолок ставки — ориентир, а не граница (`decision_gates.md`) |
@@ -46,6 +47,9 @@
 Если пользователь идёт от начала до публикации — порядок такой. Каждый шаг зависит от предыдущего.
 
 ```
+0. Выбор ниши (до разработки) → skills/niche-analysis/SKILL.md
+   (выручка ниши, доля новых, RPD, консолидация)
+                ↓
 1. ASO-исследование          → skills/aso-collection/SKILL.md, шаги 1–6
    (конкуренты, ключи, Search Popularity, позиции, gap-анализ)
                 ↓
@@ -133,6 +137,8 @@
 │   └── app-store-review-guide.md ← модерация: подготовка, причины реджекта,
 │                                    шаблон поля Notes, сводный чеклист
 ├── skills/
+│   ├── niche-analysis/           ← оценка ниши до разработки: выручка, доля новых,
+│   │                               RPD, консолидация → вердикт по пяти критериям
 │   ├── aso-collection/           ← ГЛАВНЫЙ рабочий процесс: конкуренты → ключи →
 │   │   ├── SKILL.md                метаданные → description. Начинай отсюда.
 │   │   ├── knowledge/            ← 8 справочных файлов: алгоритм App Store,
@@ -160,6 +166,7 @@
 ├── shared/
 │   ├── appstorespy.py            ← клиент AppStoreSpy: все iOS-эндпоинты
 │   ├── appstorespy_cli.py        ← CLI к нему — анализ чужих приложений в сторе
+│   ├── niche_analyzer.py         ← оценка ниши по AppStoreSpy (скилл niche-analysis)
 │   ├── asa/                      ← ASA-тулкит обоих ASA-скиллов: platform_api.py
 │   │                               (Apple Ads Platform API, Search Popularity),
 │   │                               bids.py, adgroups.py, reconcile.py,
@@ -199,6 +206,7 @@ iOS-эндпоинты. Полный справочник с примерами 
 | Кто считает конкурентом нас | `similar <app_id> --link to` |
 | Подобрать приложения по параметрам ниши | `query --category HEALTH_AND_FITNESS --min-downloads 50000` |
 | Размер ниши одним числом | `summary --category HEALTH_AND_FITNESS` |
+| Хорошая ли ниша: выручка, новые, RPD, консолидация | скилл [`niche-analysis`](skills/niche-analysis/SKILL.md) |
 | Загрузки и выручка по месяцам | `estimates <app_id> --from 2026-01-01 --to 2026-09-01` |
 | Динамика позиций в топ-чарте | `rankings --app <app_id> --from 2026-09-01 --to 2026-09-20` |
 | Портфель и обороты разработчика | `developer <dev_id>`, `developer-estimates <dev_id>` |
@@ -224,11 +232,11 @@ python3 shared/appstorespy_cli.py similar --help  # аргументы конк�
 
 ## Ключи и внешние сервисы
 
-Ключи нужны `aso-collection` (частично), `aso-monitoring` (частично), `asc-metadata` и обоим ASA-скиллам. `app-store-screenshots`, `app-store-optimization` и вся методология работают без них.
+Ключи нужны `niche-analysis`, `aso-collection` (частично), `aso-monitoring` (частично), `asc-metadata` и обоим ASA-скиллам. `app-store-screenshots`, `app-store-optimization` и вся методология работают без них.
 
 | Нужен для | Ключ | Где взять |
 |---|---|---|
-| Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
+| Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики; `niche-analysis` целиком | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
 | **Apple Ads API:** `asa-launch`, `asa-monitoring`, официальная Search Popularity (`platform_api.py`) | `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ в `~/.config/aso-tools/keys/` | Apple Ads → Account Settings → API. `ASA_ORG_ID` можно не задавать для `platform_api.py`, если аккаунт у ключа один |
 | Search Popularity длинного хвоста (cookie-способ) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` + `APPLE_SA_ADAM_ID` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В2 |
 | Заливка метаданных в App Store Connect, метрики ASC (organic vs paid) | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
@@ -261,7 +269,7 @@ python3 ./skills/aso-collection/scripts/collect_profiles.py --project ./aso-coll
 Установить как обычные скиллы (тогда пути в SKILL.md станут верными):
 
 ```bash
-./install.sh           # все семь скиллов (ASO + ASA), симлинками
+./install.sh           # все восемь скиллов (ниша, ASO, ASA), симлинками
 ./install.sh --check   # что установлено сейчас
 ```
 
