@@ -36,6 +36,8 @@ AppStoreSpy — единственный внешний источник в эт
 
 Команды из правой колонки реализованы и корректны — они просто вернут понятную ошибку про 403, пока тариф их не покрывает.
 
+`summary` 26.10.2026 отработал на ключе этого кита — набор эндпоинтов на тарифе мог расшириться. Не считай 403 по таблице заранее: вызывай и обрабатывай ошибку.
+
 ### Коды ответа, которые значат не то, что кажется
 
 | Код | Что на самом деле |
@@ -77,7 +79,7 @@ python3 shared/appstorespy_cli.py similar 431006818 --link from --limit 30 \
   --fields id,name,downloads_month,revenue_month,rating_count
 ```
 
-**Проверка, стоит ли вообще заходить в нишу.** Сколько там приложений и сколько денег:
+**Проверка, стоит ли вообще заходить в нишу.** Полная оценка — выручка, доля новых, RPD, консолидация, вердикт — это скилл [`niche-analysis`](../skills/niche-analysis/SKILL.md) (`shared/niche_analyzer.py`). Быстрый взгляд одним числом — сколько там приложений и сколько денег:
 
 ```bash
 python3 shared/appstorespy_cli.py summary --category HEALTH_AND_FITNESS --min-downloads 10000
@@ -105,6 +107,7 @@ python3 shared/appstorespy_cli.py rankings --app 431006818 \
 - `--link from` — кого App Store показывает похожими **на это приложение**; `--link to` — в чьих списках похожих стоит **оно само**. Второе отвечает на вопрос «кто считает нас конкурентом» и часто даёт другой список.
 - `--fields` принимает поля через запятую. У `app` набор шире, чем у `query`: там `short`, `screenshots`, `languages`, `privacy_policy`, `top_countries_downloads`. У `query` — `description_short`, `downloads_month`, `revenue_month`, `chart_info`.
 - `--profile` у команды `app` — готовый набор полей под ASO-профиль вместо выкачки всего.
+- Сортировку по убыванию передавай через `=`: `--sort=-revenue_month`. С пробелом argparse примет `-revenue_month` за отдельный флаг и упадёт с `expected one argument`.
 - `--sort` принимает только значения из списка API (`-downloads_month`, `rating_avg`, …), а `--fields` у команд `app` и `search` сверяется со списком полей модели. Неверное значение отбивается до сетевого запроса, кредиты не тратятся.
 - Категории — enum из 41 значения (`GAMES_PUZZLE`, `HEALTH_AND_FITNESS`, `EDUCATION`, …). Неверная категория даёт 422 со списком допустимых прямо в тексте ошибки.
 
