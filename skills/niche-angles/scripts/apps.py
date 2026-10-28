@@ -7,7 +7,7 @@
                                          # из этого пишутся offer / job / hooks в config.json
   python3 apps.py --project P --ids 123,456 --digest   # то же для произвольных приложений (напр. без выручки)
 """
-import argparse, json, subprocess, sys, time
+import argparse, json, os, shutil, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import requests
@@ -31,9 +31,12 @@ def nets_of(ads):
 
 
 def fetch(ids, cache, countries=("us", "gb", "fr", "de", "es", "jp")):
-    import appstorespy as asp
+    import appstorespy as asp  # заодно подтягивает api_keys.env через env_setup
     need = [i for i in ids if "shots" not in cache.get(i, {})]
     if not need: return
+    if not os.environ.get("APPSTORESPY_API_KEY", "").strip():
+        sys.exit("❌ APPSTORESPY_API_KEY не задан — без него нет subtitle, гео выручки и рекламных сетей. "
+                 "Впиши ключ в ~/.config/aso-tools/api_keys.env (шаблон — config/api_keys.env.example)")
     it = {}
     for cc in countries:
         left = [i for i in need if i not in it]
@@ -43,11 +46,15 @@ def fetch(ids, cache, countries=("us", "gb", "fr", "de", "es", "jp")):
             time.sleep(1)
 
     def spy(i):
+        err = None
         for _ in range(3):
-            try: return i, asp.get_app(i, fields=["name", "short", "top_countries_revenue", "top_countries_downloads", "advertised", "ads"])
-            except Exception: time.sleep(2)
-        return i, {}
-    with ThreadPoolExecutor(4) as ex: sp = dict(ex.map(spy, need))
+            try: return i, asp.get_app(i, fields=["name", "short", "top_countries_revenue", "top_countries_downloads", "advertised", "ads"]), None
+            except asp.AppStoreSpyError as e: err = e; time.sleep(2)
+        return i, {}, err
+    with ThreadPoolExecutor(4) as ex: res = list(ex.map(spy, need))
+    sp = {i: d for i, d, _ in res}
+    for i, _, err in res:
+        if err: print(f"  ⚠️  AppStoreSpy не отдал {i}: {err} — в карточке не будет subtitle, гео и рекламы", file=sys.stderr)
     for i in need:
         x, s = it.get(i, {}), sp.get(i, {}) or {}
         s = s.get("data", s)
@@ -69,12 +76,18 @@ def download_and_ocr(project, ids, cache):
             r = requests.get(u, timeout=30)
             if r.ok: f.write_bytes(r.content)
     with ThreadPoolExecutor(8) as ex: list(ex.map(get, jobs))
+    ocr = load_json(Path(project) / "cache_ocr.json", {})
+    if all(f.name in ocr for f in shots.glob("*.jpg")): return
     ocr_bin = SKILL / "scripts" / "ocr"
     if not ocr_bin.exists():
+        # OCR — только macOS Vision. Без него digest всё равно печатается: subtitle и описание есть.
+        if sys.platform != "darwin" or not shutil.which("swiftc"):
+            print("  ⚠️  OCR пропущен: нужен macOS и swiftc (Xcode Command Line Tools). "
+                  "Тексты скриншотов в digest будут пустыми — опирайся на subtitle и описание", file=sys.stderr)
+            return
         subprocess.run(["swiftc", "-O", str(SKILL / "scripts" / "ocr.swift"), "-o", str(ocr_bin)], check=True)
     out = Path(project) / "cache_ocr_new.json"
     subprocess.run([str(ocr_bin), str(shots), str(out)], check=True, capture_output=True)
-    ocr = load_json(Path(project) / "cache_ocr.json", {})
     ocr.update(json.loads(out.read_text())); out.unlink()
     save_json(Path(project) / "cache_ocr.json", ocr)
 

@@ -1,15 +1,16 @@
-"""Общее для скриптов niche-angles: пути к shared/ репозитория, конфиг проекта, скор, чтение подниш."""
+"""Общее для скриптов niche-angles: конфиг проекта, скор, чтение подниш.
+
+Общий код кита лежит рядом симлинками на shared/ (appstorespy.py, env_setup.py,
+asa/platform_api.py) — как в остальных скиллах. Поэтому скрипты работают и из клона,
+и после install.sh, в том числе в режиме --copy, где симлинки разыменовываются.
+"""
 import csv, json, sys
 from pathlib import Path
 
-# resolve(): скилл ставится симлинком ~/.claude/skills/niche-angles → <репозиторий>/skills/niche-angles
-SKILL = Path(__file__).resolve().parent.parent
-REPO = SKILL.parent.parent
-SHARED = REPO / "shared"
-NICHE_ANALYZER = SHARED / "niche_analyzer.py"
-KEYWORD_SUGGEST = SHARED / "keyword_suggest.py"
-sys.path.insert(0, str(SHARED))
-sys.path.insert(0, str(SHARED / "asa"))
+SCRIPTS = Path(__file__).resolve().parent
+SKILL = SCRIPTS.parent
+sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(SCRIPTS / "asa"))
 
 
 def new_cutoff(as_of):
@@ -61,12 +62,13 @@ def metrics(project, sub):
 def score(m):
     """Скор 0–100 «шансы соло-разработчика». Вес = максимум баллов; на опорном значении — половина веса,
     вдвое лучше и выше — полный вес, хуже — пропорционально меньше."""
+    # У подниши без выручки niche_analyzer пишет new_share/rpd/leader = null — это 0 баллов, а не ошибка.
     c = {x["key"]: x["value"] for x in m["criteria"]}
     part = lambda ratio, w: w * min(max(ratio, 0), 2) / 2
     pts = {
         "Малых новых $5–30k (25)": part(c["small_new"] / 3, 25),
-        "Доля новых (25)": part(c["new_share"] / 0.25, 25),
-        "Доля лидера (15)": part(0.5 / (c["leader"] or 1), 15),
+        "Доля новых (25)": part((c["new_share"] or 0) / 0.25, 25),
+        "Доля лидера (15)": part(0.5 / c["leader"], 15) if c["leader"] else 0,
         "RPD (15)": part((c["rpd"] or 0) / 1.0, 15),
         "Выручка (10)": part(c["total"] / 300000, 10),
         "Зарабатывающих (10)": part(c["earning"] / 6, 10),

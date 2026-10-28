@@ -242,7 +242,7 @@ python3 shared/appstorespy_cli.py similar --help  # аргументы конк�
 | Нужен для | Ключ | Где взять |
 |---|---|---|
 | Анализ чужих приложений: subtitle, похожие, оценки загрузок/выручки, чарты, разработчики; `niche-analysis` и `niche-angles` целиком | `APPSTORESPY_API_KEY` | appstorespy.com — команды в [`knowledge/appstorespy_api.md`](knowledge/appstorespy_api.md) |
-| **Apple Ads API:** `asa-launch`, `asa-monitoring`, официальная Search Popularity (`platform_api.py`) | `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ в `~/.config/aso-tools/keys/` | Apple Ads → Account Settings → API. `ASA_ORG_ID` можно не задавать для `platform_api.py`, если аккаунт у ключа один |
+| **Apple Ads API:** `asa-launch`, `asa-monitoring`, официальная Search Popularity (`platform_api.py`), спрос по углам в `niche-angles` | `ASA_ORG_ID`, `ASA_CLIENT_ID`, `ASA_KEY_ID` + PEM-ключ в `~/.config/aso-tools/keys/` | Apple Ads → Account Settings → API. `ASA_ORG_ID` можно не задавать для `platform_api.py`, если аккаунт у ключа один |
 | Search Popularity длинного хвоста (cookie-способ) | `APPLE_SA_COOKIE` + `APPLE_SA_XSRF` + `APPLE_SA_ADAM_ID` | cookie из DevTools на app-ads.apple.com, живёт ~24 часа. Процедура — в `skills/aso-collection/SKILL.md`, шаг 4В2 |
 | Заливка метаданных в App Store Connect, метрики ASC (organic vs paid) | `.p8` ключ + KEY_ID + ISSUER_ID | App Store Connect → Users and Access → Integrations |
 | Триалы по кампаниям в `asa-monitoring` | MCP-сервер Amplitude | подключается в агенте, отдельного ключа в файле нет |
