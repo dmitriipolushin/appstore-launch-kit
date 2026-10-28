@@ -16,7 +16,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/.claude/skills"
-SKILLS=(niche-analysis aso-collection aso-monitoring asa-launch asa-monitoring
+SKILLS=(niche-analysis niche-angles aso-collection aso-monitoring asa-launch asa-monitoring
         app-store-optimization app-store-screenshots asc-metadata)
 
 mode="${1:---link}"
