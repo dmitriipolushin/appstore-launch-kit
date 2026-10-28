@@ -20,6 +20,9 @@ next-env.d.ts
 npm-debug.log*
 yarn-error.log*
 
+# Скомпилированный OCR (собирается из ocr.swift при первом запуске apps.py)
+skills/niche-angles/scripts/ocr
+
 # Python
 __pycache__/
 *.pyc
